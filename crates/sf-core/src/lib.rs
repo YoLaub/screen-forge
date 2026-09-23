@@ -4,6 +4,7 @@
 //! server only ever reads it. This crate is the single owner of that layout.
 
 pub mod node;
+pub mod project;
 pub mod store;
 
 use std::path::{Path, PathBuf};
