@@ -1,0 +1,3 @@
+allowBuilds:
+  # node-canvas is Fabric's optional Node.js backend; the app renders in the WebView.
+  canvas: false

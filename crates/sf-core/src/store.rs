@@ -59,7 +59,7 @@ pub fn node_dir(root: &Path, id: &str) -> Result<PathBuf, StoreError> {
     Ok(nodes_dir(root).join(id))
 }
 
-fn nodes_dir(root: &Path) -> PathBuf {
+pub(crate) fn nodes_dir(root: &Path) -> PathBuf {
     project_dir(root).join(NODES_DIR_NAME)
 }
 
@@ -84,10 +84,23 @@ pub fn write_node(root: &Path, node: &Node) -> Result<(), StoreError> {
     let dir = node_dir(root, &node.id)?;
     fs::create_dir_all(&dir)?;
     let json = serde_json::to_vec_pretty(node).expect("a Node always serializes");
-    let tmp = dir.join(format!("{NODE_FILE_NAME}.tmp"));
-    fs::write(&tmp, json)?;
-    fs::rename(&tmp, dir.join(NODE_FILE_NAME))?;
+    write_atomic(&dir.join(NODE_FILE_NAME), &json)
+}
+
+/// Writes `bytes` to a sibling temp file, then renames it over `path`.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, path)?;
     Ok(())
+}
+
+pub(crate) fn remove_file_if_exists(path: &Path) -> Result<(), StoreError> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
 }
 
 pub fn read_node(root: &Path, id: &str) -> Result<Node, StoreError> {

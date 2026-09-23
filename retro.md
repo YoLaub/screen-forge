@@ -25,3 +25,14 @@
   Running Claude Code this way does not touch the global MCP config.
 - Still missing for the full US-1 loop: the app does not write `.screenforge/`
   yet. The fixture was written by hand.
+
+## canvas (2026-09-23)
+- US-1 loop closed for real: the owner pasted a screenshot in the app, the app
+  autosaved `.screenforge/`, and Claude Code described it through
+  `screenforge-mcp`. Drag-and-drop was not planned; the owner hit it in the
+  first real-app test and it was added in the same feature.
+- Browser E2E (Playwright on Vite with a stubbed `__TAURI_INTERNALS__.invoke`)
+  covers the front, but not Tauri window settings such as `dragDropEnabled`:
+  those need the real app.
+- A leftover Vite from a Playwright check held port 1420 and made
+  `pnpm tauri dev` fail: stop helper servers by PID, `pkill -f` patterns missed it.
