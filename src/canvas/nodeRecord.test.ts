@@ -44,4 +44,19 @@ describe("toNodeRecord", () => {
       user_instructions: "Fix the border",
     });
   });
+
+  it("exports links as connections", () => {
+    const record = toNodeRecord({
+      sfId: "vec_1",
+      sfKind: "vector_drawing",
+      sfName: "Form",
+      sfInstructions: "",
+      sfLinks: [{ target_node: "cap_2", trigger: "onError", payload_type: "" }],
+      width: 10,
+      height: 10,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    expect(record.connections).toEqual([{ target_node: "cap_2", trigger: "onError" }]);
+  });
 });
