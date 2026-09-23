@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { loadCanvas, saveCanvas, type NodeExportDto } from "../services/backend";
 import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
+import { firstImageFile } from "./imageFile";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { nextZoom } from "./viewport";
 
@@ -127,11 +128,8 @@ export default function CanvasView({ root }: { root: string }) {
       lastPan = null;
     });
 
-    // Cmd+V with an image in the clipboard creates a capture node.
-    const onPaste = async (e: ClipboardEvent) => {
-      const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
-      if (!file) return;
-      e.preventDefault();
+    // An image pasted (Cmd+V) or dropped on the canvas becomes a capture node.
+    const addCapture = async (file: File, at: Point) => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -140,11 +138,24 @@ export default function CanvasView({ root }: { root: string }) {
       });
       const image = await FabricImage.fromURL(dataUrl);
       tagAsNode(canvas, image, "capture");
-      const center = canvas.getVpCenter();
       // Fabric 7 objects are positioned by their center (originX/Y default to "center").
-      image.set({ left: center.x, top: center.y });
+      image.set({ left: at.x, top: at.y });
       canvas.add(image);
       canvas.setActiveObject(image);
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      const file = firstImageFile(e.clipboardData?.files);
+      if (!file) return;
+      e.preventDefault();
+      addCapture(file, canvas.getVpCenter()).catch((error) => setStatus(`Paste failed: ${String(error)}`));
+    };
+    // Requires dragDropEnabled: false on the Tauri window, otherwise Tauri swallows drops.
+    const onDragOver = (e: DragEvent) => e.preventDefault();
+    const onDrop = (e: DragEvent) => {
+      const file = firstImageFile(e.dataTransfer?.files);
+      if (!file) return;
+      e.preventDefault();
+      addCapture(file, canvas.getScenePoint(e)).catch((error) => setStatus(`Drop failed: ${String(error)}`));
     };
 
     const resize = new ResizeObserver(() => {
@@ -154,12 +165,16 @@ export default function CanvasView({ root }: { root: string }) {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("paste", onPaste);
+    container.addEventListener("dragover", onDragOver);
+    container.addEventListener("drop", onDrop);
 
     return () => {
       resize.disconnect();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("paste", onPaste);
+      container.removeEventListener("dragover", onDragOver);
+      container.removeEventListener("drop", onDrop);
       fabricRef.current = null;
       canvas.dispose();
     };
