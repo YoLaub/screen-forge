@@ -11,4 +11,10 @@
 - Verification: `pnpm tauri dev` launched the app process and Vite served the
   page (canvas root rendered, Tailwind applied, checked in a browser). The
   native window itself could not be screenshotted from the agent session
-  (no screen-recording permission for the terminal).
+  (no screen-recording permission for the terminal). The owner confirmed
+  the window opens.
+
+## sf-core-node-model (2026-09-23)
+- There is no consumer yet, so the E2E check is the store tests themselves:
+  they run on real temp folders, not mocks. The first real consumer E2E comes
+  with `screenforge-mcp`.
