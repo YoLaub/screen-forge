@@ -36,3 +36,10 @@
   those need the real app.
 - A leftover Vite from a Playwright check held port 1420 and made
   `pnpm tauri dev` fail: stop helper servers by PID, `pkill -f` patterns missed it.
+
+## annotations-links (2026-09-23)
+- The inspector layout bug only showed up as "clicks miss after typing": the
+  first fix idea (focus stealing Backspace) was wrong. Measuring `scrollLeft`
+  and the canvas `getBoundingClientRect()` found the real cause.
+- Opening the inspector shrinks the canvas, so the viewport center moves: a new
+  node is placed at the center of the visible area, not of the window.
