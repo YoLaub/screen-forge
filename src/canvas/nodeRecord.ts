@@ -1,3 +1,5 @@
+import { type Link, toConnections } from "./links";
+
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
 export type NodeKind = "capture" | "vector_drawing";
 
@@ -17,10 +19,12 @@ export interface SfProps {
   sfKind: NodeKind;
   sfName: string;
   sfInstructions: string;
+  /** Outgoing links. Absent on canvases saved before links existed. */
+  sfLinks?: Link[];
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
-export const SF_PROPS: (keyof SfProps)[] = ["sfId", "sfKind", "sfName", "sfInstructions"];
+export const SF_PROPS: (keyof SfProps)[] = ["sfId", "sfKind", "sfName", "sfInstructions", "sfLinks"];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec" };
 const NAME_PREFIX: Record<NodeKind, string> = { capture: "Capture", vector_drawing: "Rectangle" };
@@ -54,7 +58,7 @@ export function toNodeRecord(
       height: Math.round(obj.height * obj.scaleY),
     },
     colors_detected: [],
-    connections: [],
+    connections: toConnections(obj.sfLinks ?? []),
     user_instructions: obj.sfInstructions,
   };
 }
