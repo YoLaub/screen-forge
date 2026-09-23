@@ -68,6 +68,8 @@ injector, OCR, Windows and Linux.
 - Run the app: `pnpm tauri dev`
 - Front: `pnpm test` · `pnpm typecheck`
 - Rust: `cargo test --workspace`
+- MCP server: `cargo build -p sf-mcp` → `target/debug/screenforge-mcp` (run from
+  the project root; register with `claude mcp add screenforge -- <path>`)
 - Packaged build: `pnpm tauri build`
 
 BRAIN: ~/brain/screen-forge

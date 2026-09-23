@@ -18,3 +18,10 @@
 - There is no consumer yet, so the E2E check is the store tests themselves:
   they run on real temp folders, not mocks. The first real consumer E2E comes
   with `screenforge-mcp`.
+
+## sf-mcp (2026-09-23)
+- First consumer E2E of sf-core: done through `screenforge-mcp` (raw JSON-RPC,
+  then `claude -p --mcp-config ... --strict-mcp-config` on a fixture project).
+  Running Claude Code this way does not touch the global MCP config.
+- Still missing for the full US-1 loop: the app does not write `.screenforge/`
+  yet. The fixture was written by hand.

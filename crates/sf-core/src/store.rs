@@ -13,6 +13,10 @@ use crate::project_dir;
 
 pub const NODES_DIR_NAME: &str = "nodes";
 pub const NODE_FILE_NAME: &str = "node.json";
+/// Vector render of a node, written by the app next to `node.json`.
+pub const SVG_FILE_NAME: &str = "export.svg";
+/// Bitmap render of a node, written by the app next to `node.json`.
+pub const PNG_FILE_NAME: &str = "image.png";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
