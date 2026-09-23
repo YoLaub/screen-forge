@@ -1,9 +1,12 @@
-import { Canvas, FabricImage, FabricObject, Point, Rect } from "fabric";
+import { Canvas, FabricImage, FabricObject, Path, Point, Rect } from "fabric";
 import { useEffect, useRef, useState } from "react";
 import { loadCanvas, saveCanvas, type NodeExportDto } from "../services/backend";
 import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
+import { arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
+import { pruneLinks } from "./links";
+import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { nextZoom } from "./viewport";
 
@@ -29,6 +32,47 @@ function exportNode(obj: FabricObject & SfProps): NodeExportDto {
   return { node, svg: wrapSvg(obj.toSVG(), obj.getBoundingRect()), png_base64: dataUrlToBase64(png) };
 }
 
+function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
+  return {
+    id: obj.sfId,
+    kind: obj.sfKind,
+    name: obj.sfName,
+    instructions: obj.sfInstructions,
+    links: obj.sfLinks ?? [],
+  };
+}
+
+/** Link arrows are display only: rebuilt from sfLinks, never saved. */
+function drawArrows(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
+  previous.forEach((a) => canvas.remove(a));
+  const nodes = canvas.getObjects().filter(isNode);
+  const byId = new Map(nodes.map((n) => [n.sfId, n]));
+  const arrows: FabricObject[] = [];
+  for (const source of nodes) {
+    for (const link of source.sfLinks ?? []) {
+      const target = byId.get(link.target_node);
+      if (!target) continue;
+      const line = arrowBetween(source.getBoundingRect(), target.getBoundingRect());
+      if (!line) continue;
+      const [b1, b2] = arrowHead(line.from, line.to, 12);
+      const d = `M ${line.from.x} ${line.from.y} L ${line.to.x} ${line.to.y} M ${b1.x} ${b1.y} L ${line.to.x} ${line.to.y} L ${b2.x} ${b2.y}`;
+      const arrow = new Path(d, {
+        fill: "",
+        stroke: "#64748b",
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        excludeFromExport: true,
+      });
+      canvas.add(arrow);
+      canvas.sendObjectToBack(arrow);
+      arrows.push(arrow);
+    }
+  }
+  canvas.requestRenderAll();
+  return arrows;
+}
+
 function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind) {
   const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
   const props: SfProps = {
@@ -36,6 +80,7 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind) {
     sfKind: kind,
     sfName: nextNodeName(kind, names),
     sfInstructions: "",
+    sfLinks: [],
   };
   Object.assign(obj, props);
 }
@@ -45,6 +90,10 @@ export default function CanvasView({ root }: { root: string }) {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const [status, setStatus] = useState("");
+  const [selected, setSelected] = useState<InspectorNode | null>(null);
+  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
+  // Set inside the canvas effect, used by inspector edits.
+  const afterEditRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const container = containerRef.current!;
@@ -66,17 +115,47 @@ export default function CanvasView({ root }: { root: string }) {
       AUTOSAVE_DELAY_MS,
       (error) => setStatus(`Save failed: ${String(error)}`),
     );
-    const onChange = () => {
-      if (!loading) autosave.schedule();
+    let arrows: FabricObject[] = [];
+    const redrawArrows = () => {
+      arrows = drawArrows(canvas, arrows);
+    };
+    // Arrow objects come and go on every redraw: only node changes trigger a save.
+    const onChange = ({ target }: { target: SfObject }) => {
+      if (loading || !isNode(target)) return;
+      redrawArrows();
+      autosave.schedule();
     };
     canvas.on("object:added", onChange);
     canvas.on("object:modified", onChange);
     canvas.on("object:removed", onChange);
+    canvas.on("object:moving", redrawArrows);
+    canvas.on("object:scaling", redrawArrows);
+
+    const syncSelection = () => {
+      const active = canvas.getActiveObjects() as SfObject[];
+      const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
+      setSelected(node ? toInspectorNode(node) : null);
+      setOthers(
+        canvas
+          .getObjects()
+          .filter(isNode)
+          .filter((n) => n !== node)
+          .map((n) => ({ id: n.sfId, name: n.sfName })),
+      );
+    };
+    canvas.on("selection:created", syncSelection);
+    canvas.on("selection:updated", syncSelection);
+    canvas.on("selection:cleared", syncSelection);
+    afterEditRef.current = () => {
+      syncSelection();
+      redrawArrows();
+      autosave.schedule();
+    };
 
     loadCanvas(root)
       .then(async (json) => {
         if (json) await canvas.loadFromJSON(json);
-        canvas.requestRenderAll();
+        redrawArrows();
       })
       .catch((error) => setStatus(`Load failed: ${String(error)}`))
       .finally(() => {
@@ -103,10 +182,16 @@ export default function CanvasView({ root }: { root: string }) {
         canvas.selection = false;
         canvas.defaultCursor = "grab";
       }
+      if (e.target instanceof HTMLSelectElement) return;
       if (e.key === "Backspace" || e.key === "Delete") {
         canvas.getActiveObjects().forEach((o) => canvas.remove(o));
         canvas.discardActiveObject();
-        canvas.requestRenderAll();
+        // Links pointing at removed nodes go with them.
+        const remaining = canvas.getObjects().filter(isNode);
+        const ids = new Set(remaining.map((n) => n.sfId));
+        remaining.forEach((n) => (n.sfLinks = pruneLinks(n.sfLinks ?? [], ids)));
+        redrawArrows();
+        autosave.schedule();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -180,6 +265,16 @@ export default function CanvasView({ root }: { root: string }) {
     };
   }, [root]);
 
+  function onInspectorChange(patch: InspectorPatch) {
+    const canvas = fabricRef.current;
+    const obj = canvas?.getObjects().filter(isNode).find((n) => n.sfId === selected?.id);
+    if (!obj) return;
+    if (patch.name !== undefined) obj.sfName = patch.name;
+    if (patch.instructions !== undefined) obj.sfInstructions = patch.instructions;
+    if (patch.links !== undefined) obj.sfLinks = patch.links;
+    afterEditRef.current();
+  }
+
   function addRectangle() {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -199,19 +294,24 @@ export default function CanvasView({ root }: { root: string }) {
   }
 
   return (
-    <div className="relative flex-1">
-      <div className="absolute left-3 top-3 z-10 flex gap-2">
-        <button
-          onClick={addRectangle}
-          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
-        >
-          Rectangle
-        </button>
+    <div className="flex min-h-0 flex-1">
+      {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
+          otherwise, which pushes the inspector off screen. */}
+      <div className="relative min-w-0 flex-1 overflow-hidden">
+        <div className="absolute left-3 top-3 z-10 flex gap-2">
+          <button
+            onClick={addRectangle}
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+          >
+            Rectangle
+          </button>
+        </div>
+        <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
+        <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
+          <canvas ref={canvasElRef} />
+        </div>
       </div>
-      <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
-      <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
-        <canvas ref={canvasElRef} />
-      </div>
+      {selected && <NodeInspector node={selected} others={others} onChange={onInspectorChange} />}
     </div>
   );
 }
