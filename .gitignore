@@ -14,3 +14,5 @@ dist/
 /src-tauri/gen/schemas
 *.local
 *.tsbuildinfo
+# Playwright MCP output
+.playwright-mcp/
