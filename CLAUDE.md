@@ -1,0 +1,81 @@
+# CLAUDE.md — ScreenForge repo conventions
+
+## Context
+ScreenForge is a lightweight desktop companion app. It captures any OS window,
+annotates or draws on an infinite canvas, and exposes the canvas nodes to coding
+agents through MCP. It is a personal product: it is built for the owner's own
+Claude Code workflow first, and commercialization comes later.
+**Problem #1: let Claude Code "see" a UI element (capture + vector spec +
+annotations) and act on it locally, without copy-pasting screenshots.**
+
+Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
+file and the spec disagree, this file wins (see the MCP decision below).
+
+## Goals (v1 = proof of concept)
+1. OS-level capture of a window or region onto the canvas (macOS).
+2. Infinite canvas holding capture and drawing nodes with user annotations.
+3. MCP server over stdio that exposes the nodes (`get_canvas_snapshot`,
+   `get_node_detail`, `get_node_dependencies`), which is enough to run US-1
+   end to end.
+
+Out of scope for v1: OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket transports, the
+live preview sandbox (`update_node_preview`), the one-click client config
+injector, OCR, Windows and Linux.
+
+## Constraints
+- macOS only in v1. Keep capture code behind an OS boundary so other platforms
+  can be added later.
+- No network listener in v1: MCP runs over stdio only.
+- tldraw needs a paid license for commercial use (otherwise it shows a
+  watermark). Review this before any commercial release.
+
+## Technical decisions
+- Desktop shell: Tauri v2 + Rust.
+- UI: React 19 + Tailwind CSS + Radix UI.
+- Canvas: tldraw SDK. Advanced vector tools (booleans, fine Bézier editing)
+  are built on top of it.
+- MCP server: Rust, using the official `rmcp` SDK. This deviates from spec §6,
+  which named the TypeScript SDK: Rust avoids bundling a Node runtime. The
+  server is a `screenforge mcp` binary that talks to the running app.
+- IPC between the `screenforge mcp` binary and the running app: _à décider_.
+- Canvas persistence format and location: _à décider_.
+- Test runners (Rust / front): _à décider_.
+- External docs (tldraw, rmcp, Tauri v2): use a generic doc tool. Whether a
+  dedicated doc MCP is worth building: _à décider_ (not evaluated yet).
+
+## Method
+- Git: `main` + `dev` + feature branches cut from `dev`, merged back with
+  `merge --no-ff`.
+- TDD and local-only commits, per the global CLAUDE.md.
+- Autonomy: within a validated feature, run test → implementation → commit
+  without asking, then report. Stop before starting a new feature and before
+  any architecture choice.
+
+## Key rules
+- A single service layer owns node data. The UI and the MCP server both
+  consume it, and neither reads canvas internals directly.
+- MCP payloads follow the node shape in spec §7 (`id`, `type`, `name`,
+  `dimensions`, `visual_context`, `connections`, `user_instructions`).
+
+## Commands
+- dev / test / build: _à décider_ (fill in once the repo is scaffolded).
+
+BRAIN: ~/brain/screen-forge
+
+## Journal d'erreurs
+
+Quand un bug non trivial est résolu, append une ligne à `$BRAIN/bag.ndjson` :
+
+{"trigger":"", "symptom":"", "root_cause":"", "fix":"", "severity":1, "date":"YYYY-MM-DD"}
+
+- `trigger` : les termes techniques exacts qui identifient le contexte
+  ("relation polymorphe Strapi v5"), pas une description du bug.
+  C'est la clé de regroupement.
+- `severity` : 1 friction · 2 rework · 3 irréversible (perte de données,
+  CI verte à tort, prod)
+- Append only, jamais d'édition, une ligne par incident.
+
+Si le `trigger` n'est pas formulable en termes techniques précis, le diagnostic
+n'est pas terminé : le dire plutôt que de logger une entrée floue.
+Un bug résolu par hasard ne se logge pas.
+Si aucune ligne `BRAIN:` n'est présente dans ce CLAUDE.md, ne rien logger et le signaler.
