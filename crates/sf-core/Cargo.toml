@@ -1,0 +1,7 @@
+[package]
+name = "sf-core"
+version = "0.1.0"
+edition = "2024"
+description = "ScreenForge project-folder format and node model, shared by the app and the MCP server"
+
+[dependencies]
