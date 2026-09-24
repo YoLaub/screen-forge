@@ -68,3 +68,16 @@
 - Claude, given only the MCP, described the login screen's element order, the
   column offset and the open questions (email or username, where to go after
   login): the layout information is what makes the difference.
+
+## mcp-setup (2026-09-24)
+- tauri-build checks `bundle.externalBin` at compile time: declaring the
+  sidecar in the main config would break `cargo test` and CI where the binary
+  is not built. It lives in `tauri.bundle.conf.json`, used by `pnpm bundle`.
+- An app started from the Dock does not get the terminal's PATH: the `claude`
+  CLI is found through a login shell (`$SHELL -lc 'command -v claude'`).
+- Claude Desktop rewrites its config on restart (UI state under
+  `preferences`): compare configs by key path, and only check that our merge
+  touched `mcpServers`.
+- The registrations point into `target/release/bundle/...` for now; they must
+  be redone once the app lives in /Applications (the panel shows
+  "Points to another server").
