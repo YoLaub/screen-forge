@@ -3603,6 +3603,8 @@ name = "screenforge"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
  "serde",
  "serde_json",
  "sf-core",

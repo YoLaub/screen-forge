@@ -20,18 +20,9 @@ struct RawWindow {
     info: WindowInfo,
     pid: u32,
     minimized: bool,
+    /// macOS window level (kCGWindowLayer): 0 for normal app windows.
+    layer: i32,
 }
-
-/// macOS processes that own always-present, non-app windows.
-const SYSTEM_APPS: &[&str] = &[
-    "Window Server",
-    "Dock",
-    "Control Center",
-    "Notification Center",
-    "SystemUIServer",
-    "WindowManager",
-    "Spotlight",
-];
 
 const MIN_SIZE: u32 = 50;
 
@@ -39,7 +30,7 @@ fn is_pickable(w: &RawWindow, own_pid: u32) -> bool {
     w.pid != own_pid
         && !w.minimized
         && !w.info.app_name.is_empty()
-        && !SYSTEM_APPS.contains(&w.info.app_name.as_str())
+        && w.layer == 0
         && w.info.width >= MIN_SIZE
         && w.info.height >= MIN_SIZE
 }
@@ -62,6 +53,11 @@ fn frontmost_window(raw: Vec<RawWindow>, own_pid: u32) -> Option<WindowInfo> {
         .map(|w| w.info)
 }
 
+/// A fully transparent capture: an invisible overlay rather than a real window.
+fn is_blank(image: &RgbaImage) -> bool {
+    image.pixels().all(|p| p[3] == 0)
+}
+
 fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, String> {
     let mut png = std::io::Cursor::new(Vec::new());
     image
@@ -70,10 +66,74 @@ fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, String> {
     Ok(png.into_inner())
 }
 
-fn read_window(w: &xcap::Window) -> xcap::XCapResult<RawWindow> {
+/// Level of every on-screen window, by window id (kCGWindowNumber → kCGWindowLayer).
+#[cfg(target_os = "macos")]
+fn window_levels() -> std::collections::HashMap<u32, i32> {
+    use objc2_core_foundation::{CFDictionary, CFNumber, CFNumberType, CFString};
+    use objc2_core_graphics::{CGWindowListCopyWindowInfo, CGWindowListOption};
+
+    // SAFETY: CoreFoundation reads on the array returned by CGWindowListCopyWindowInfo,
+    // which stays alive for the whole loop; missing keys are checked for null.
+    unsafe fn number(dict: &CFDictionary, key: &str) -> Option<i32> {
+        let key = CFString::from_str(key);
+        let value = unsafe { dict.value((key.as_ref() as *const CFString).cast()) };
+        if value.is_null() {
+            return None;
+        }
+        let mut out: i32 = 0;
+        let ok = unsafe {
+            (*(value as *const CFNumber)).value(
+                CFNumberType::IntType,
+                &mut out as *mut i32 as *mut std::ffi::c_void,
+            )
+        };
+        ok.then_some(out)
+    }
+
+    let mut levels = std::collections::HashMap::new();
+    let options =
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements;
+    let Some(array) = CGWindowListCopyWindowInfo(options, 0) else {
+        return levels;
+    };
+    for i in 0..array.count() {
+        let dict = unsafe { array.value_at_index(i) } as *const CFDictionary;
+        if dict.is_null() {
+            continue;
+        }
+        let dict = unsafe { &*dict };
+        if let (Some(id), Some(layer)) = unsafe {
+            (
+                number(dict, "kCGWindowNumber"),
+                number(dict, "kCGWindowLayer"),
+            )
+        } {
+            levels.insert(id as u32, layer);
+        }
+    }
+    levels
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_levels() -> std::collections::HashMap<u32, i32> {
+    std::collections::HashMap::new()
+}
+
+/// Reads one window. A window missing from `levels` counts as not normal.
+fn read_window(
+    w: &xcap::Window,
+    levels: &std::collections::HashMap<u32, i32>,
+) -> xcap::XCapResult<RawWindow> {
+    let id = w.id()?;
+    let default_level = if cfg!(target_os = "macos") {
+        i32::MAX
+    } else {
+        0
+    };
     Ok(RawWindow {
+        layer: levels.get(&id).copied().unwrap_or(default_level),
         info: WindowInfo {
-            id: w.id()?,
+            id,
             app_name: w.app_name()?,
             title: w.title()?,
             width: w.width()?,
@@ -89,7 +149,11 @@ pub async fn list_windows() -> Result<Vec<WindowInfo>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let windows = xcap::Window::all().map_err(|e| e.to_string())?;
         // A window that vanished while being listed is skipped, not an error.
-        let raw = windows.iter().filter_map(|w| read_window(w).ok()).collect();
+        let levels = window_levels();
+        let raw = windows
+            .iter()
+            .filter_map(|w| read_window(w, &levels).ok())
+            .collect();
         Ok(pickable_windows(raw, std::process::id()))
     })
     .await
@@ -137,6 +201,9 @@ fn capture_png(id: u32) -> Result<String, String> {
     let image = window.capture_image().map_err(|e| {
         format!("Capture failed ({e}). Check that ScreenForge has the Screen Recording permission.")
     })?;
+    if is_blank(&image) {
+        return Err("The captured window is empty (fully transparent).".into());
+    }
     Ok(base64::engine::general_purpose::STANDARD.encode(encode_png(&image)?))
 }
 
@@ -157,7 +224,11 @@ pub struct ShortcutCapture {
 /// Captures the window in front on the current desktop, without switching desktop.
 pub fn capture_frontmost() -> Result<ShortcutCapture, String> {
     let windows = xcap::Window::all().map_err(|e| e.to_string())?;
-    let raw = windows.iter().filter_map(|w| read_window(w).ok()).collect();
+    let levels = window_levels();
+    let raw = windows
+        .iter()
+        .filter_map(|w| read_window(w, &levels).ok())
+        .collect();
     let window = frontmost_window(raw, std::process::id()).ok_or(
         "No window to capture on this desktop. Check that ScreenForge has the Screen Recording permission.",
     )?;
@@ -181,7 +252,13 @@ mod tests {
             },
             pid,
             minimized: false,
+            layer: 0,
         }
+    }
+
+    fn at_layer(mut w: RawWindow, layer: i32) -> RawWindow {
+        w.layer = layer;
+        w
     }
 
     fn ids(windows: &[WindowInfo]) -> Vec<u32> {
@@ -202,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn drops_own_system_minimized_tiny_and_unnamed_windows() {
+    fn drops_own_minimized_tiny_and_unnamed_windows() {
         let mut minimized = raw(4, "Mail", "Inbox", 12);
         minimized.minimized = true;
         let mut tiny = raw(5, "Slack", "badge", 13);
@@ -210,7 +287,6 @@ mod tests {
         let windows = pickable_windows(
             vec![
                 raw(1, "ScreenForge", "ScreenForge", 99),
-                raw(2, "Dock", "", 14),
                 raw(3, "", "", 15),
                 minimized,
                 tiny,
@@ -219,6 +295,22 @@ mod tests {
             99,
         );
         assert_eq!(ids(&windows), [6]);
+    }
+
+    #[test]
+    fn drops_windows_above_the_normal_level_whatever_their_name() {
+        // Menu bar, Dock, widgets and the transparent screenshot overlay are not
+        // at level 0; their names are localized ("Centre de notifications").
+        let windows = pickable_windows(
+            vec![
+                at_layer(raw(1, "Window Server", "Menubar", 14), 24),
+                at_layer(raw(2, "Centre de notifications", "Mois", 15), 23),
+                at_layer(raw(3, "Capture d’écran", "", 16), 1000),
+                raw(4, "Safari", "Login", 10),
+            ],
+            99,
+        );
+        assert_eq!(ids(&windows), [4]);
     }
 
     #[test]
@@ -235,7 +327,7 @@ mod tests {
         // The OS lists windows front to back.
         let front = frontmost_window(
             vec![
-                raw(1, "Window Server", "Menubar", 14),
+                at_layer(raw(1, "Capture d’écran", "", 16), 1000),
                 raw(2, "ScreenForge", "ScreenForge", 99),
                 raw(3, "Safari", "Login", 10),
                 raw(4, "Code", "main.rs", 11),
@@ -249,9 +341,30 @@ mod tests {
     fn no_frontmost_when_only_system_windows_are_visible() {
         // What macOS shows without the Screen Recording permission.
         assert_eq!(
-            frontmost_window(vec![raw(1, "Window Server", "Menubar", 14)], 99),
+            frontmost_window(
+                vec![at_layer(raw(1, "Window Server", "Menubar", 14), 24)],
+                99
+            ),
             None
         );
+    }
+
+    /// Needs a logged-in macOS session: `cargo test -p screenforge -- --ignored`.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore]
+    fn window_levels_sees_normal_and_raised_windows() {
+        let levels = window_levels();
+        assert!(levels.values().any(|&l| l == 0), "no normal window: {levels:?}");
+        assert!(levels.values().any(|&l| l > 0), "no menu bar or Dock: {levels:?}");
+    }
+
+    #[test]
+    fn a_fully_transparent_image_is_blank() {
+        assert!(is_blank(&RgbaImage::from_pixel(4, 4, Rgba([0, 0, 0, 0]))));
+        let mut one_pixel = RgbaImage::from_pixel(4, 4, Rgba([0, 0, 0, 0]));
+        one_pixel.put_pixel(2, 2, Rgba([255, 0, 0, 255]));
+        assert!(!is_blank(&one_pixel));
     }
 
     #[test]
