@@ -121,6 +121,7 @@ mod tests {
                 },
                 position: None,
                 parent: None,
+                text: None,
                 colors_detected: vec![],
                 connections: vec![],
                 user_instructions: String::new(),
