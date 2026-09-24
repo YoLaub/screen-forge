@@ -128,3 +128,11 @@
   dev window still running old front code, a misread downscaled screenshot.
 - Still manual: the ad-hoc signed bundle loses its Screen Recording grant on
   every rebuild (next step: a stable local signing identity).
+
+## signing (2026-09-24, dropped)
+- A self-signed "ScreenForge Dev" identity signed the first build, then the
+  next rebuild triggered a keychain prompt: codesign needs the login keychain
+  password to reach the private key, and the owner does not know it (it can
+  differ from the macOS session password). The owner declined a dedicated
+  signing keychain; signing stays ad hoc and the unused certificate was left in
+  the login keychain.
