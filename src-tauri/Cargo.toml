@@ -24,6 +24,8 @@ serde_json = "1"
 base64 = "0.23.1"
 tauri-plugin-dialog = "2"
 sf-core = { version = "0.1.0", path = "../crates/sf-core" }
+xcap = "0.9.8"
+tauri-plugin-global-shortcut = "2"
 
 [dev-dependencies]
 tempfile = "3.27.0"
