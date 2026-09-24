@@ -63,17 +63,18 @@ export function angleOf(c: Coords): number {
   return Math.round((deg + 360) % 360);
 }
 
-/** The node's style; `radius` and `text` say which properties apply to it. */
-export function readStyle(o: StyledLike, applies: { radius: boolean; text: boolean }): NodeStyle {
+/** The node's style; `applies` says which properties it has (a line has no fill). */
+export function readStyle(o: StyledLike, applies: { fill?: boolean; radius: boolean; text: boolean }): NodeStyle {
   const style: NodeStyle = {};
-  if (typeof o.fill === "string") {
-    const fill = normalizeHex(o.fill);
-    if (fill) style.fill = fill;
-  } else if (o.fill && (o.fill.type === "linear" || o.fill.type === "radial")) {
+  const fill = applies.fill === false ? undefined : o.fill;
+  if (typeof fill === "string") {
+    const hex = normalizeHex(fill);
+    if (hex) style.fill = hex;
+  } else if (fill && (fill.type === "linear" || fill.type === "radial")) {
     style.gradient = {
-      kind: o.fill.type,
-      ...(o.fill.type === "linear" && { angle: angleOf(o.fill.coords) }),
-      stops: [...o.fill.colorStops]
+      kind: fill.type,
+      ...(fill.type === "linear" && { angle: angleOf(fill.coords) }),
+      stops: [...fill.colorStops]
         .sort((a, b) => a.offset - b.offset)
         .map((s) => ({ offset: s.offset, color: normalizeHex(s.color) ?? s.color })),
     };

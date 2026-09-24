@@ -73,6 +73,12 @@ describe("readStyle", () => {
     });
   });
 
+  it("ignores the fill of an element that has none (Fabric gives lines a black fill)", () => {
+    expect(
+      readStyle({ fill: "rgb(0,0,0)", stroke: "#374151", strokeWidth: 2 }, { fill: false, radius: false, text: false }),
+    ).toEqual({ stroke: "#374151", stroke_width: 2 });
+  });
+
   it("adds font size and weight for text", () => {
     expect(readStyle({ fill: "#111827", fontSize: 20, fontWeight: "bold" }, { radius: false, text: true })).toEqual({
       fill: "#111827",
