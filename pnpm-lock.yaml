@@ -20,6 +20,9 @@ importers:
       fabric:
         specifier: ^7.4.0
         version: 7.4.0
+      paper:
+        specifier: ^0.12.18
+        version: 0.12.18
       react:
         specifier: ^19.1.0
         version: 19.3.0
@@ -979,6 +982,10 @@ packages:
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
+
+  paper@0.12.18:
+    resolution: {integrity: sha512-ZSLIEejQTJZuYHhSSqAf4jXOnii0kPhCJGAnYAANtdS72aNwXJ9cP95tZHgq1tnNpvEwgQhggy+4OarviqTCGw==}
+    engines: {node: '>=8.0.0'}
 
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
@@ -2089,6 +2096,8 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
     optional: true
+
+  paper@0.12.18: {}
 
   parse5@7.3.0:
     dependencies:
