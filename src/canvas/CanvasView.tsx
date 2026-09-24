@@ -5,7 +5,7 @@ import {
   ensureScreenCaptureAccess,
   listWindows,
   loadCanvas,
-  onOpenCapturePicker,
+  onShortcutCapture,
   openScreenCaptureSettings,
   saveCanvas,
   type NodeExportDto,
@@ -270,7 +270,14 @@ export default function CanvasView({ root }: { root: string }) {
     window.addEventListener("paste", onPaste);
     container.addEventListener("dragover", onDragOver);
     container.addEventListener("drop", onDrop);
-    const unlistenShortcut = onOpenCapturePicker(() => openPickerRef.current());
+    // Cmd+Shift+X captures the window in front without bringing ScreenForge forward.
+    const unlistenShortcut = onShortcutCapture(
+      ({ window, png_base64 }) =>
+        addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window))
+          .then(() => setStatus(`Captured ${captureName(window)}`))
+          .catch((error) => setStatus(`Capture failed: ${String(error)}`)),
+      (message) => setStatus(`Capture failed: ${message}`),
+    );
 
     return () => {
       unlistenShortcut.then((unlisten) => unlisten());
@@ -293,8 +300,6 @@ export default function CanvasView({ root }: { root: string }) {
       setStatus(`Window list failed: ${String(error)}`);
     }
   }
-  const openPickerRef = useRef(openPicker);
-  openPickerRef.current = openPicker;
 
   async function pickWindow(w: WindowInfo) {
     setPicker(null);
@@ -348,7 +353,7 @@ export default function CanvasView({ root }: { root: string }) {
           </button>
           <button
             onClick={openPicker}
-            title="Capture a window (⌘⇧X from any app)"
+            title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
             className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
           >
             Capture window

@@ -35,22 +35,31 @@ const SYSTEM_APPS: &[&str] = &[
 
 const MIN_SIZE: u32 = 50;
 
+fn is_pickable(w: &RawWindow, own_pid: u32) -> bool {
+    w.pid != own_pid
+        && !w.minimized
+        && !w.info.app_name.is_empty()
+        && !SYSTEM_APPS.contains(&w.info.app_name.as_str())
+        && w.info.width >= MIN_SIZE
+        && w.info.height >= MIN_SIZE
+}
+
 /// Windows worth offering in the picker, sorted by app then title.
 fn pickable_windows(raw: Vec<RawWindow>, own_pid: u32) -> Vec<WindowInfo> {
     let mut windows: Vec<WindowInfo> = raw
         .into_iter()
-        .filter(|w| {
-            w.pid != own_pid
-                && !w.minimized
-                && !w.info.app_name.is_empty()
-                && !SYSTEM_APPS.contains(&w.info.app_name.as_str())
-                && w.info.width >= MIN_SIZE
-                && w.info.height >= MIN_SIZE
-        })
+        .filter(|w| is_pickable(w, own_pid))
         .map(|w| w.info)
         .collect();
     windows.sort_by_key(|w| (w.app_name.to_lowercase(), w.title.to_lowercase()));
     windows
+}
+
+/// The window the user is looking at: `raw` is in OS order, front to back.
+fn frontmost_window(raw: Vec<RawWindow>, own_pid: u32) -> Option<WindowInfo> {
+    raw.into_iter()
+        .find(|w| is_pickable(w, own_pid))
+        .map(|w| w.info)
 }
 
 fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, String> {
@@ -117,24 +126,43 @@ pub fn open_screen_capture_settings() -> Result<(), String> {
     Ok(())
 }
 
-/// Captures window `id` and returns it as a base64 PNG.
+/// Captures window `id` as a base64 PNG. macOS only lists windows of the current
+/// desktop (Space), so the window must be on it.
+fn capture_png(id: u32) -> Result<String, String> {
+    let windows = xcap::Window::all().map_err(|e| e.to_string())?;
+    let window = windows
+        .iter()
+        .find(|w| w.id().ok() == Some(id))
+        .ok_or("This window is not on the current desktop any more.")?;
+    let image = window.capture_image().map_err(|e| {
+        format!("Capture failed ({e}). Check that ScreenForge has the Screen Recording permission.")
+    })?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(encode_png(&image)?))
+}
+
 #[tauri::command]
 pub async fn capture_window(id: u32) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let windows = xcap::Window::all().map_err(|e| e.to_string())?;
-        let window = windows
-            .iter()
-            .find(|w| w.id().ok() == Some(id))
-            .ok_or("This window is no longer open.")?;
-        let image = window.capture_image().map_err(|e| {
-            format!(
-                "Capture failed ({e}). Check that ScreenForge has the Screen Recording permission."
-            )
-        })?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(encode_png(&image)?))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || capture_png(id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// A capture made by the global shortcut, sent to the front as an event.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShortcutCapture {
+    pub window: WindowInfo,
+    pub png_base64: String,
+}
+
+/// Captures the window in front on the current desktop, without switching desktop.
+pub fn capture_frontmost() -> Result<ShortcutCapture, String> {
+    let windows = xcap::Window::all().map_err(|e| e.to_string())?;
+    let raw = windows.iter().filter_map(|w| read_window(w).ok()).collect();
+    let window = frontmost_window(raw, std::process::id()).ok_or(
+        "No window to capture on this desktop. Check that ScreenForge has the Screen Recording permission.",
+    )?;
+    let png_base64 = capture_png(window.id)?;
+    Ok(ShortcutCapture { window, png_base64 })
 }
 
 #[cfg(test)]
@@ -199,6 +227,30 @@ mod tests {
         assert_eq!(
             ids(&pickable_windows(vec![raw(1, "Safari", "", 10)], 99)),
             [1]
+        );
+    }
+
+    #[test]
+    fn frontmost_is_the_first_pickable_window_in_os_order() {
+        // The OS lists windows front to back.
+        let front = frontmost_window(
+            vec![
+                raw(1, "Window Server", "Menubar", 14),
+                raw(2, "ScreenForge", "ScreenForge", 99),
+                raw(3, "Safari", "Login", 10),
+                raw(4, "Code", "main.rs", 11),
+            ],
+            99,
+        );
+        assert_eq!(front.map(|w| w.id), Some(3));
+    }
+
+    #[test]
+    fn no_frontmost_when_only_system_windows_are_visible() {
+        // What macOS shows without the Screen Recording permission.
+        assert_eq!(
+            frontmost_window(vec![raw(1, "Window Server", "Menubar", 14)], 99),
+            None
         );
     }
 

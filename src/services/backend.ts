@@ -41,9 +41,23 @@ export function captureWindow(id: number): Promise<string> {
   return invoke("capture_window", { id });
 }
 
-/** Fired by the Cmd+Shift+X global shortcut. */
-export function onOpenCapturePicker(handler: () => void): Promise<UnlistenFn> {
-  return listen("open-capture-picker", handler);
+/** A capture made with the Cmd+Shift+X global shortcut. */
+export interface ShortcutCapture {
+  window: WindowInfo;
+  png_base64: string;
+}
+
+/** Cmd+Shift+X captured the window in front, or failed with a message. */
+export async function onShortcutCapture(
+  onCapture: (capture: ShortcutCapture) => void,
+  onFailure: (message: string) => void,
+): Promise<UnlistenFn> {
+  const unlistenCapture = await listen<ShortcutCapture>("shortcut-capture", (e) => onCapture(e.payload));
+  const unlistenFailure = await listen<string>("shortcut-capture-failed", (e) => onFailure(e.payload));
+  return () => {
+    unlistenCapture();
+    unlistenFailure();
+  };
 }
 
 /** False when macOS Screen Recording is not granted (first call shows the OS prompt). */
