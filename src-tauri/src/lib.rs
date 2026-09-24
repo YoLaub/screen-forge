@@ -1,3 +1,4 @@
+mod agents;
 mod capture;
 mod project;
 
@@ -45,6 +46,9 @@ pub fn run() {
             capture::capture_window,
             capture::ensure_screen_capture_access,
             capture::open_screen_capture_settings,
+            agents::agent_status,
+            agents::configure_claude_code,
+            agents::configure_claude_desktop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
