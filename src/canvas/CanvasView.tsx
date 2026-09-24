@@ -247,7 +247,11 @@ export default function CanvasView({ root }: { root: string }) {
         if (json) await canvas.loadFromJSON(json);
         redrawArrows();
       })
-      .catch((error) => setStatus(`Load failed: ${String(error)}`))
+      .catch((error) => {
+        // Saving now would mirror an empty canvas and delete every node on disk.
+        autosave.block();
+        setStatus(`Load failed, saving is disabled to protect your files: ${String(error)}`);
+      })
       .finally(() => {
         loading = false;
       });

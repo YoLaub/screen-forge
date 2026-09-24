@@ -41,4 +41,14 @@ describe("createAutosave", () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(onError).toHaveBeenCalledWith(new Error("disk full"));
   });
+
+  it("never saves once blocked, even if changes were pending", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const autosave = createAutosave(save, 500);
+    autosave.schedule();
+    autosave.block();
+    autosave.schedule();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(save).not.toHaveBeenCalled();
+  });
 });
