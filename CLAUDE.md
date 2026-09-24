@@ -20,14 +20,16 @@ Done:
    `get_node_detail`, `get_node_dependencies`): US-1 runs end to end.
 
 Remaining (the owner does not consider v1 complete without them):
-4. Agent feedback on the canvas: `create_node_annotation` and
-   `update_node_preview` (generated code shown next to the drawing).
+4. Agent understanding of the canvas: a global canvas image, each node's
+   position and size, and grouping (which elements form one screen), so the
+   agent sees the layout and not just a list of nodes.
 5. Vector drawing tools (spec module B): pen and Bézier curves, shapes, text,
    fills and gradients, layers.
 6. One-click MCP setup for Claude Code / Claude Desktop (US-3, without OAuth).
 
-Out of scope for v1: OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket transports,
-region capture, OCR, Windows and Linux. The v1 milestone (dev → main) and a
+Out of scope for v1: the agent writing to the canvas (`create_node_annotation`,
+`update_node_preview`, corrections), OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket
+transports, region capture, OCR, Windows and Linux. The v1 milestone (dev → main) and a
 stable local signing identity come once goals 4 to 6 are done.
 
 ## Constraints
