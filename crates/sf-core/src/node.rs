@@ -21,6 +21,9 @@ pub struct Node {
     /// Content of a text element, readable by the agent without OCR.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Visual style in CSS-like terms, so the agent needs not decode the SVG.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<Style>,
     #[serde(default)]
     pub colors_detected: Vec<String>,
     #[serde(default)]
@@ -48,6 +51,52 @@ pub struct Dimensions {
 pub struct Position {
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Style {
+    /// Solid fill as `#RRGGBB`; absent when there is no fill or a gradient.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_width: Option<f64>,
+    /// Corner radius in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<f64>,
+    /// 0 to 1; absent when fully opaque.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradient: Option<Gradient>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Gradient {
+    pub kind: GradientKind,
+    /// Direction in degrees for a linear gradient, CSS style (90 = left to right).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub angle: Option<f64>,
+    pub stops: Vec<GradientStop>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GradientKind {
+    Linear,
+    Radial,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GradientStop {
+    /// 0 to 1 along the gradient.
+    pub offset: f64,
+    pub color: String,
 }
 
 /// An outgoing link from the owning node to `target_node`.
@@ -85,6 +134,7 @@ mod tests {
             position: None,
             parent: None,
             text: None,
+            style: None,
             colors_detected: vec!["#3B82F6".into(), "#FFFFFF".into()],
             connections: vec![Connection {
                 target_node: "modal_success".into(),
@@ -151,6 +201,7 @@ mod tests {
             position: Some(Position { x: -40.0, y: 10.5 }),
             parent: None,
             text: None,
+            style: None,
             colors_detected: vec![],
             connections: vec![],
             user_instructions: String::new(),
@@ -196,6 +247,56 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(old.text, None);
+    }
+
+    #[test]
+    fn style_serializes_only_what_is_set() {
+        let mut button = sample();
+        button.style = Some(Style {
+            fill: None,
+            stroke: Some("#1D4ED8".into()),
+            stroke_width: Some(1.0),
+            radius: Some(8.0),
+            opacity: None,
+            gradient: Some(Gradient {
+                kind: GradientKind::Linear,
+                angle: Some(90.0),
+                stops: vec![
+                    GradientStop {
+                        offset: 0.0,
+                        color: "#3B82F6".into(),
+                    },
+                    GradientStop {
+                        offset: 1.0,
+                        color: "#1D4ED8".into(),
+                    },
+                ],
+            }),
+            font_size: None,
+            font_weight: None,
+        });
+        assert_eq!(
+            serde_json::to_value(&button).unwrap()["style"],
+            json!({
+                "stroke": "#1D4ED8",
+                "stroke_width": 1.0,
+                "radius": 8.0,
+                "gradient": {
+                    "kind": "linear",
+                    "angle": 90.0,
+                    "stops": [
+                        { "offset": 0.0, "color": "#3B82F6" },
+                        { "offset": 1.0, "color": "#1D4ED8" }
+                    ]
+                }
+            })
+        );
+        assert!(
+            serde_json::to_value(sample())
+                .unwrap()
+                .get("style")
+                .is_none()
+        );
     }
 
     #[test]
