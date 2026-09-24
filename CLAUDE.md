@@ -26,7 +26,7 @@ Remaining (the owner does not consider v1 complete without it):
 5. Vector drawing tools (spec module B), in four features, in this order:
    5.1 shapes and text (done), 5.2 styles (done: fill, stroke, radius, opacity, gradients),
    5.3 pen and Bézier curves (done), 5.4 layers panel and boolean operations
-   (Paper.js) (done).
+   (Paper.js) (done), 5.5 undo and redo (Cmd+Z / Cmd+Shift+Z).
 
 Out of scope for v1: the agent writing to the canvas (`create_node_annotation`,
 `update_node_preview`, corrections), OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket
