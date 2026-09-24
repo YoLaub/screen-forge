@@ -93,3 +93,8 @@
   the browser E2E, not by the UI: always inspect what the agent will receive.
 - toNodeRecord had grown one positional parameter per feature; it now takes
   named extras before adding style.
+
+## pen (2026-09-24)
+- The owner tested an app window still running the previous front code: hot
+  reload did not reach it, although Vite served the new files. The dev app is
+  now restarted before every owner test of a front change.

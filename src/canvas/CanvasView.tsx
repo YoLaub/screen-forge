@@ -6,6 +6,7 @@ import {
   FabricText,
   Gradient,
   IText,
+  Circle,
   Line,
   Path,
   Point,
@@ -28,6 +29,7 @@ import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
+import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
@@ -103,7 +105,8 @@ function exportNode(
 /** Style properties that apply to `obj`; undefined for captures (bitmaps). */
 function appliesOf(obj: FabricObject & SfProps): StyleApplies | undefined {
   if (obj.sfKind === "capture") return undefined;
-  return { fill: !(obj instanceof Line), radius: obj instanceof Rect, text: obj instanceof IText };
+  const openPath = !!obj.sfAnchors && !obj.sfClosed;
+  return { fill: !(obj instanceof Line) && !openPath, radius: obj instanceof Rect, text: obj instanceof IText };
 }
 
 function styleOf(obj: FabricObject & SfProps) {
@@ -181,7 +184,8 @@ const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
   { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
   { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
   { id: "line", label: "Line", key: "L", hint: "Drag to draw; Shift snaps to 45°" },
-  { id: "polygon", label: "Polygon", key: "P", hint: "Drag to draw" },
+  { id: "polygon", label: "Polygon", key: "no key", hint: "Drag to draw" },
+  { id: "pen", label: "Pen", key: "P", hint: "Click for corners, drag for curves; click the first point to close, Enter to finish; double-click a path to edit it" },
   { id: "text", label: "Text", key: "T", hint: "Click to type" },
 ];
 
@@ -194,11 +198,43 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
   ellipse: { width: 120, height: 120 },
   line: { width: 160, height: 0 },
   polygon: { width: 120, height: 120 },
+  pen: { width: 0, height: 0 },
   text: { width: 0, height: 0 },
 };
 
 /** The shape a drag from `start` to `end` draws with `tool` (text is placed on click). */
-function shapeFor(tool: Exclude<DrawingTool, "text">, start: Point, end: Point, shift: boolean): FabricObject {
+type ShapeTool = Exclude<DrawingTool, "text" | "pen">;
+
+const PEN_STROKE = { fill: "", stroke: "#111827", strokeWidth: 2, strokeUniform: true };
+const DISPLAY_ONLY = { selectable: false, evented: false, excludeFromExport: true };
+
+/** A pen path through `anchors`; a closed one gets the wireframe fill. */
+function pathFrom(anchors: Anchor[], closed: boolean): Path {
+  const path = new Path(toSvgPath(anchors, closed), closed ? { ...WIREFRAME } : { ...PEN_STROKE });
+  Object.assign(path, { sfAnchors: anchors, sfClosed: closed });
+  return path;
+}
+
+/** Points and handle lines shown while drawing or editing a path. */
+function anchorMarkers(anchors: Anchor[], zoom: number, withHandles: boolean): FabricObject[] {
+  const size = 8 / zoom;
+  const markers: FabricObject[] = [];
+  for (const a of anchors) {
+    if (withHandles) {
+      for (const h of [a.in, a.out]) {
+        if (!h) continue;
+        markers.push(new Line([a.x, a.y, h.x, h.y], { ...DISPLAY_ONLY, stroke: "#3B82F6", strokeWidth: 1 / zoom }));
+        markers.push(new Circle({ ...DISPLAY_ONLY, left: h.x, top: h.y, radius: size / 2, fill: "#3B82F6" }));
+      }
+    }
+    markers.push(
+      new Rect({ ...DISPLAY_ONLY, left: a.x, top: a.y, width: size, height: size, fill: "#ffffff", stroke: "#3B82F6", strokeWidth: 1 / zoom }),
+    );
+  }
+  return markers;
+}
+
+function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): FabricObject {
   if (tool === "line") {
     const to = snapLine(start, end, shift);
     return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
@@ -358,6 +394,12 @@ export default function CanvasView({ root }: { root: string }) {
         canvas.defaultCursor = "grab";
       }
       if (e.target instanceof HTMLSelectElement) return;
+      if (onPenKey(e)) return;
+      if (edit) {
+        if (e.key === "Escape" || e.key === "Enter") exitEdit();
+        e.preventDefault();
+        return;
+      }
       const picked = toolForKey(e);
       if (picked) setTool(picked);
       if (e.key === "Escape") setTool("select");
@@ -394,12 +436,13 @@ export default function CanvasView({ root }: { root: string }) {
     // Drawing: the active tool draws a shape by dragging; the preview is not a
     // node (so no save) until the mouse is released.
     const applyTool = (t: Tool) => {
+      if (t !== "pen" && pen) finishPen(false);
       canvas.selection = t === "select";
       canvas.skipTargetFind = t !== "select";
       canvas.defaultCursor = t === "select" ? "default" : t === "text" ? "text" : "crosshair";
     };
     applyToolRef.current = applyTool;
-    let drawing: { tool: Exclude<DrawingTool, "text">; start: Point; preview: FabricObject } | null = null;
+    let drawing: { tool: ShapeTool; start: Point; preview: FabricObject } | null = null;
     const finishShape = (obj: FabricObject, t: DrawingTool) => {
       const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
       const kind = t === "frame" ? "frame" : "vector_drawing";
@@ -414,7 +457,7 @@ export default function CanvasView({ root }: { root: string }) {
     };
     canvas.on("mouse:down", ({ e }) => {
       const t = toolRef.current;
-      if (t === "select" || spaceDown) return;
+      if (t === "select" || t === "pen" || spaceDown) return;
       const start = canvas.getScenePoint(e);
       if (t === "text") {
         const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: "system-ui, sans-serif", fill: "#111827" });
@@ -449,6 +492,152 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.add(shape);
       finishShape(shape, t);
     });
+    // Pen: click for a corner, drag for a smooth point; click the first point to
+    // close, Enter or Escape to finish open, Backspace to drop the last point.
+    let pen: { anchors: Anchor[]; pressed: Point | null; cursor: Point | null; preview: FabricObject[] } | null = null;
+    const drawPenPreview = () => {
+      if (!pen) return;
+      pen.preview.forEach((o) => canvas.remove(o));
+      const pending =
+        pen.pressed && pen.cursor ? smoothAnchor(pen.pressed, pen.cursor) : pen.cursor ? { x: pen.cursor.x, y: pen.cursor.y } : null;
+      const shown = pending ? [...pen.anchors, pending] : pen.anchors;
+      pen.preview = [
+        new Path(toSvgPath(shown, false) || "M 0 0", { ...PEN_STROKE, ...DISPLAY_ONLY }),
+        ...anchorMarkers(pen.anchors, canvas.getZoom(), false),
+      ];
+      pen.preview.forEach((o) => canvas.add(o));
+      canvas.requestRenderAll();
+    };
+    const finishPen = (closed: boolean) => {
+      if (!pen) return;
+      const { anchors, preview } = pen;
+      pen = null;
+      preview.forEach((o) => canvas.remove(o));
+      if (anchors.length >= 2) {
+        const path = pathFrom(anchors, closed);
+        canvas.add(path);
+        finishShape(path, "pen");
+      } else {
+        setTool("select");
+      }
+    };
+    canvas.on("mouse:down", ({ e }) => {
+      if (toolRef.current !== "pen" || spaceDown) return;
+      const p = canvas.getScenePoint(e);
+      if (pen && pen.anchors.length >= 2 && hitAnchor([pen.anchors[0]], p, 8 / canvas.getZoom()) === 0) {
+        finishPen(true);
+        return;
+      }
+      pen ??= { anchors: [], pressed: null, cursor: null, preview: [] };
+      pen.pressed = p;
+    });
+    canvas.on("mouse:move", ({ e }) => {
+      if (!pen) return;
+      pen.cursor = canvas.getScenePoint(e);
+      drawPenPreview();
+    });
+    canvas.on("mouse:up", ({ e }) => {
+      if (!pen?.pressed) return;
+      const p = canvas.getScenePoint(e);
+      const dragged = Math.hypot(p.x - pen.pressed.x, p.y - pen.pressed.y) > 3;
+      pen.anchors.push(dragged ? smoothAnchor(pen.pressed, p) : { x: pen.pressed.x, y: pen.pressed.y });
+      pen.pressed = null;
+      pen.cursor = null;
+      drawPenPreview();
+    });
+    const onPenKey = (e: KeyboardEvent): boolean => {
+      if (!pen) return false;
+      if (e.key === "Enter" || e.key === "Escape") finishPen(false);
+      else if (e.key === "Backspace" || e.key === "Delete") {
+        pen.anchors.pop();
+        drawPenPreview();
+      }
+      e.preventDefault();
+      return true;
+    };
+
+    // Path editing: double-click a pen path to drag its points and handles (Alt
+    // moves one handle alone); Escape or a click elsewhere ends the edit.
+    type PathNode = Path & SfProps;
+    let edit: {
+      obj: PathNode;
+      anchors: Anchor[];
+      overlays: FabricObject[];
+      drag: { index: number; which: HandleSide | "anchor" } | null;
+    } | null = null;
+    const drawEditOverlays = () => {
+      if (!edit) return;
+      edit.overlays.forEach((o) => canvas.remove(o));
+      edit.overlays = anchorMarkers(edit.anchors, canvas.getZoom(), true);
+      edit.overlays.forEach((o) => canvas.add(o));
+      canvas.requestRenderAll();
+    };
+    const rebuildEditedPath = () => {
+      if (!edit) return;
+      const old = edit.obj;
+      const next = pathFrom(edit.anchors, !!old.sfClosed) as PathNode;
+      const { fill, stroke, strokeWidth, opacity, strokeUniform } = old;
+      next.set({ fill, stroke, strokeWidth, opacity, strokeUniform });
+      Object.assign(next, { sfId: old.sfId, sfKind: old.sfKind, sfName: old.sfName, sfInstructions: old.sfInstructions, sfLinks: old.sfLinks });
+      canvas.insertAt(canvas.getObjects().indexOf(old), next);
+      canvas.remove(old);
+      edit.obj = next;
+    };
+    const enterEdit = (obj: PathNode) => {
+      // Stored points are in path coordinates: project them with the object's
+      // current transform, since the path may have been moved or scaled.
+      const matrix = obj.calcTransformMatrix();
+      const toScene = (p: { x: number; y: number }) =>
+        new Point(p.x - obj.pathOffset.x, p.y - obj.pathOffset.y).transform(matrix);
+      const anchors = (obj.sfAnchors ?? []).map((a) => ({
+        ...toScene(a),
+        ...(a.in && { in: toScene(a.in) }),
+        ...(a.out && { out: toScene(a.out) }),
+      }));
+      canvas.discardActiveObject();
+      edit = { obj, anchors, overlays: [], drag: null };
+      canvas.selection = false;
+      canvas.skipTargetFind = true;
+      rebuildEditedPath();
+      drawEditOverlays();
+    };
+    const exitEdit = () => {
+      if (!edit) return;
+      const { obj, overlays } = edit;
+      edit = null;
+      overlays.forEach((o) => canvas.remove(o));
+      applyTool(toolRef.current);
+      canvas.setActiveObject(obj);
+      canvas.requestRenderAll();
+      autosave.schedule();
+    };
+    canvas.on("mouse:dblclick", ({ target }) => {
+      const obj = target as SfObject | undefined;
+      if (obj && isNode(obj) && obj.sfAnchors) enterEdit(obj as PathNode);
+    });
+    canvas.on("mouse:down", ({ e }) => {
+      if (!edit || spaceDown) return;
+      const p = canvas.getScenePoint(e);
+      const tolerance = 8 / canvas.getZoom();
+      const handle = hitHandle(edit.anchors, p, tolerance);
+      const anchor = hitAnchor(edit.anchors, p, tolerance);
+      if (handle) edit.drag = handle;
+      else if (anchor >= 0) edit.drag = { index: anchor, which: "anchor" };
+      else exitEdit();
+    });
+    canvas.on("mouse:move", ({ e }) => {
+      if (!edit?.drag) return;
+      const p = canvas.getScenePoint(e);
+      const { index, which } = edit.drag;
+      edit.anchors =
+        which === "anchor" ? moveAnchor(edit.anchors, index, p) : moveHandle(edit.anchors, index, which, p, e.altKey);
+      rebuildEditedPath();
+      drawEditOverlays();
+    });
+    canvas.on("mouse:up", () => {
+      if (edit) edit.drag = null;
+    });
+
     // Text edits are node changes; an emptied text is removed.
     canvas.on("text:changed", () => autosave.schedule());
     canvas.on("text:editing:exited", ({ target }) => {

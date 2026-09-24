@@ -1,6 +1,6 @@
 import type { Box, Pt } from "./geometry";
 
-export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "polygon" | "text";
+export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "polygon" | "pen" | "text";
 export type DrawingTool = Exclude<Tool, "select">;
 
 const TOOL_KEYS: Record<string, Tool> = {
@@ -9,7 +9,7 @@ const TOOL_KEYS: Record<string, Tool> = {
   r: "rect",
   o: "ellipse",
   l: "line",
-  p: "polygon",
+  p: "pen",
   t: "text",
 };
 
@@ -20,6 +20,7 @@ export const SHAPE_NAMES: Record<DrawingTool, string> = {
   ellipse: "Ellipse",
   line: "Line",
   polygon: "Polygon",
+  pen: "Path",
   text: "Text",
 };
 
