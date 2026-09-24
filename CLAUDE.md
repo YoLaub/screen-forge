@@ -22,8 +22,11 @@ v1 is done (tagged `v0.1.0`, 2026-09-24):
    order, text and styles: US-1 runs end to end.
 5. One-click MCP setup for Claude Code and Claude Desktop (US-3, without OAuth).
 
-Next: a stable local signing identity (so Screen Recording survives rebuilds).
-After that, candidates, none decided: the agent writing to the canvas
+Signing stays ad hoc (decided 2026-09-24): a stable local identity needed the
+login keychain password, which the owner does not have, and a dedicated signing
+keychain was declined. After each rebuild, reset and re-grant Screen Recording.
+
+Next candidates, none decided: the agent writing to the canvas
 (`create_node_annotation`, `update_node_preview`, corrections), region capture,
 OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
 
