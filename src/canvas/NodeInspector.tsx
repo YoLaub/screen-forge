@@ -27,7 +27,7 @@ export default function NodeInspector({ node, others, onChange }: Props) {
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-neutral-200 bg-white p-3 text-sm">
       <div className="text-xs uppercase tracking-wide text-neutral-400">
-        {node.kind === "capture" ? "Capture" : "Drawing"} · {node.id}
+        {{ capture: "Capture", vector_drawing: "Drawing", frame: "Frame" }[node.kind]} · {node.id}
       </div>
 
       <label className="flex flex-col gap-1">

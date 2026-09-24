@@ -1,4 +1,4 @@
-import { Canvas, FabricImage, FabricObject, Path, Point, Rect } from "fabric";
+import { Canvas, FabricImage, FabricObject, FabricText, Path, Point, Rect, type TMat2D } from "fabric";
 import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
@@ -12,8 +12,9 @@ import {
 } from "../services/backend";
 import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
-import { arrowBetween, arrowHead } from "./geometry";
+import { type Box, arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
+import { assignParents, descendants, renderScale, unionBox } from "./layout";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
@@ -26,13 +27,48 @@ FabricObject.customProperties = SF_PROPS;
 type SfObject = FabricObject & Partial<SfProps>;
 
 const AUTOSAVE_DELAY_MS = 500;
+/** Longest side of the whole-canvas and frame renders sent to the agent. */
+const RENDER_MAX_SIDE = 2000;
+const CANVAS_RENDER_MARGIN = 40;
 
 function isNode(obj: SfObject): obj is FabricObject & SfProps {
   return typeof obj.sfId === "string";
 }
 
-function exportNode(obj: FabricObject & SfProps): NodeExportDto {
-  const node = toNodeRecord(obj);
+/** PNG of a scene region, independent of the current pan and zoom. */
+function renderRegion(canvas: Canvas, box: Box): string {
+  const viewport = canvas.viewportTransform.slice() as TMat2D;
+  canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+  try {
+    const png = canvas.toDataURL({
+      format: "png",
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: box.height,
+      multiplier: renderScale(box, RENDER_MAX_SIDE),
+    });
+    return dataUrlToBase64(png);
+  } finally {
+    canvas.setViewportTransform(viewport);
+  }
+}
+
+function layoutOf(nodes: (FabricObject & SfProps)[]) {
+  return assignParents(nodes.map((n) => ({ id: n.sfId, kind: n.sfKind, bounds: n.getBoundingRect() })));
+}
+
+function exportNode(
+  canvas: Canvas,
+  obj: FabricObject & SfProps,
+  parents: Record<string, string | undefined>,
+): NodeExportDto {
+  const bounds = obj.getBoundingRect();
+  const node = toNodeRecord(obj, bounds, parents[obj.sfId]);
+  if (obj.sfKind === "frame") {
+    // A frame's image is the whole screen: the frame with everything placed on it.
+    return { node, svg: null, png_base64: renderRegion(canvas, bounds) };
+  }
   if (obj.sfKind === "capture") {
     // Captures are bitmaps: export at native resolution, no SVG (it would only wrap the PNG).
     const png = obj.toDataURL({ format: "png", multiplier: 1 / (obj.scaleX || 1) });
@@ -52,12 +88,28 @@ function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
   };
 }
 
-/** Link arrows are display only: rebuilt from sfLinks, never saved. */
-function drawArrows(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
+/** Link arrows and frame names are display only: rebuilt from node props, never saved. */
+function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
   previous.forEach((a) => canvas.remove(a));
   const nodes = canvas.getObjects().filter(isNode);
   const byId = new Map(nodes.map((n) => [n.sfId, n]));
-  const arrows: FabricObject[] = [];
+  const overlays: FabricObject[] = [];
+  const display = { selectable: false, evented: false, excludeFromExport: true };
+  for (const frame of nodes.filter((n) => n.sfKind === "frame")) {
+    const bounds = frame.getBoundingRect();
+    const label = new FabricText(frame.sfName, {
+      ...display,
+      left: bounds.left,
+      top: bounds.top - 6,
+      originX: "left",
+      originY: "bottom",
+      fontSize: 14,
+      fontFamily: "system-ui, sans-serif",
+      fill: "#737373",
+    });
+    canvas.add(label);
+    overlays.push(label);
+  }
   for (const source of nodes) {
     for (const link of source.sfLinks ?? []) {
       const target = byId.get(link.target_node);
@@ -66,21 +118,14 @@ function drawArrows(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
       if (!line) continue;
       const [b1, b2] = arrowHead(line.from, line.to, 12);
       const d = `M ${line.from.x} ${line.from.y} L ${line.to.x} ${line.to.y} M ${b1.x} ${b1.y} L ${line.to.x} ${line.to.y} L ${b2.x} ${b2.y}`;
-      const arrow = new Path(d, {
-        fill: "",
-        stroke: "#64748b",
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-      });
+      // Added last, so arrows stay above frames and the nodes they link.
+      const arrow = new Path(d, { ...display, fill: "", stroke: "#64748b", strokeWidth: 2 });
       canvas.add(arrow);
-      canvas.sendObjectToBack(arrow);
-      arrows.push(arrow);
+      overlays.push(arrow);
     }
   }
   canvas.requestRenderAll();
-  return arrows;
+  return overlays;
 }
 
 function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: string) {
@@ -122,16 +167,23 @@ export default function CanvasView({ root }: { root: string }) {
 
     const autosave = createAutosave(
       async () => {
-        const nodes = canvas.getObjects().filter(isNode).map(exportNode);
-        await saveCanvas(root, JSON.stringify(canvas.toObject()), nodes);
+        const nodes = canvas.getObjects().filter(isNode);
+        const parents = layoutOf(nodes);
+        const exports = nodes.map((n) => exportNode(canvas, n, parents));
+        const extent = unionBox(
+          nodes.map((n) => n.getBoundingRect()),
+          CANVAS_RENDER_MARGIN,
+        );
+        const canvasPng = extent && renderRegion(canvas, extent);
+        await saveCanvas(root, JSON.stringify(canvas.toObject()), canvasPng, exports);
         setStatus(`Saved ${new Date().toLocaleTimeString()}`);
       },
       AUTOSAVE_DELAY_MS,
       (error) => setStatus(`Save failed: ${String(error)}`),
     );
-    let arrows: FabricObject[] = [];
+    let overlays: FabricObject[] = [];
     const redrawArrows = () => {
-      arrows = drawArrows(canvas, arrows);
+      overlays = drawOverlays(canvas, overlays);
     };
     // Arrow objects come and go on every redraw: only node changes trigger a save.
     const onChange = ({ target }: { target: SfObject }) => {
@@ -143,6 +195,30 @@ export default function CanvasView({ root }: { root: string }) {
     canvas.on("object:modified", onChange);
     canvas.on("object:removed", onChange);
     canvas.on("object:moving", redrawArrows);
+
+    // Dragging a frame drags everything placed on it, like a screen in Figma.
+    let frameDrag: { frame: FabricObject; content: FabricObject[]; left: number; top: number } | null =
+      null;
+    canvas.on("mouse:down", ({ target }) => {
+      const frame = target as SfObject | undefined;
+      if (!frame || !isNode(frame) || frame.sfKind !== "frame" || spaceDown) return;
+      const nodes = canvas.getObjects().filter(isNode);
+      const inside = new Set(descendants(layoutOf(nodes), frame.sfId));
+      const content = nodes.filter((n) => inside.has(n.sfId));
+      frameDrag = { frame, content, left: frame.left, top: frame.top };
+    });
+    canvas.on("object:moving", ({ target }) => {
+      if (!frameDrag || target !== frameDrag.frame) return;
+      const dx = target.left - frameDrag.left;
+      const dy = target.top - frameDrag.top;
+      for (const obj of frameDrag.content) {
+        obj.set({ left: obj.left + dx, top: obj.top + dy });
+        obj.setCoords();
+      }
+      frameDrag.left = target.left;
+      frameDrag.top = target.top;
+      redrawArrows();
+    });
     canvas.on("object:scaling", redrawArrows);
 
     const syncSelection = () => {
@@ -171,7 +247,11 @@ export default function CanvasView({ root }: { root: string }) {
         if (json) await canvas.loadFromJSON(json);
         redrawArrows();
       })
-      .catch((error) => setStatus(`Load failed: ${String(error)}`))
+      .catch((error) => {
+        // Saving now would mirror an empty canvas and delete every node on disk.
+        autosave.block();
+        setStatus(`Load failed, saving is disabled to protect your files: ${String(error)}`);
+      })
       .finally(() => {
         loading = false;
       });
@@ -225,6 +305,7 @@ export default function CanvasView({ root }: { root: string }) {
     });
     canvas.on("mouse:up", () => {
       lastPan = null;
+      frameDrag = null;
     });
 
     // A captured, pasted or dropped image becomes a capture node.
@@ -321,6 +402,26 @@ export default function CanvasView({ root }: { root: string }) {
     afterEditRef.current();
   }
 
+  function addFrame() {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const center = canvas.getVpCenter();
+    const frame = new Rect({
+      left: center.x,
+      top: center.y,
+      width: 800,
+      height: 500,
+      fill: "#ffffff",
+      stroke: "#d4d4d4",
+      strokeWidth: 1,
+    });
+    tagAsNode(canvas, frame, "frame");
+    canvas.add(frame);
+    // Frames sit behind the elements placed on them.
+    canvas.sendObjectToBack(frame);
+    canvas.setActiveObject(frame);
+  }
+
   function addRectangle() {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -345,6 +446,13 @@ export default function CanvasView({ root }: { root: string }) {
           otherwise, which pushes the inspector off screen. */}
       <div className="relative min-w-0 flex-1 overflow-hidden">
         <div className="absolute left-3 top-3 z-10 flex gap-2">
+          <button
+            onClick={addFrame}
+            title="A named screen: everything placed inside it belongs to it."
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+          >
+            Frame
+          </button>
           <button
             onClick={addRectangle}
             className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"

@@ -133,6 +133,23 @@ pub fn list_nodes(root: &Path) -> Result<Vec<Node>, StoreError> {
     Ok(nodes)
 }
 
+/// Nodes whose parent is frame `id`, in reading order: top to bottom, then left
+/// to right. Nodes without a position come last, by id.
+pub fn node_children(root: &Path, id: &str) -> Result<Vec<Node>, StoreError> {
+    let mut children: Vec<Node> = list_nodes(root)?
+        .into_iter()
+        .filter(|n| n.parent.as_deref() == Some(id))
+        .collect();
+    // Stable sort over the id-sorted list: unpositioned nodes stay in id order.
+    children.sort_by(|a, b| match (a.position, b.position) {
+        (Some(pa), Some(pb)) => pa.y.total_cmp(&pb.y).then(pa.x.total_cmp(&pb.x)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    Ok(children)
+}
+
 pub fn node_dependencies(root: &Path, id: &str) -> Result<Dependencies, StoreError> {
     let node = read_node(root, id)?;
     let upstream = list_nodes(root)?
@@ -170,6 +187,8 @@ mod tests {
                 width: 100.0,
                 height: 50.0,
             },
+            position: None,
+            parent: None,
             colors_detected: vec![],
             connections: links
                 .iter()
@@ -337,6 +356,31 @@ mod tests {
             .map(|c| c.target_node.as_str())
             .collect();
         assert_eq!(targets, ["success"]);
+    }
+
+    #[test]
+    fn children_of_a_frame_come_in_reading_order() {
+        use crate::node::Position;
+        let p = project();
+        let at = |id: &str, parent: Option<&str>, pos: Option<(f64, f64)>| {
+            let mut n = node(id, &[]);
+            n.parent = parent.map(str::to_string);
+            n.position = pos.map(|(x, y)| Position { x, y });
+            n
+        };
+        write_node(p.path(), &at("frame", None, Some((0.0, 0.0)))).unwrap();
+        write_node(p.path(), &at("button", Some("frame"), Some((10.0, 300.0)))).unwrap();
+        write_node(p.path(), &at("logo", Some("frame"), Some((200.0, 20.0)))).unwrap();
+        write_node(p.path(), &at("title", Some("frame"), Some((10.0, 20.0)))).unwrap();
+        write_node(p.path(), &at("legacy", Some("frame"), None)).unwrap();
+        write_node(p.path(), &at("outside", None, Some((900.0, 0.0)))).unwrap();
+
+        let ids: Vec<_> = node_children(p.path(), "frame")
+            .unwrap()
+            .into_iter()
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(ids, ["title", "logo", "button", "legacy"]);
     }
 
     #[test]

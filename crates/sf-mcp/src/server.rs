@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::tools::{self, ToolError};
+use crate::tools::{self, ToolError, ToolOutput};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct NodeIdParams {
@@ -35,27 +35,17 @@ impl ScreenForgeServer {
     }
 
     #[tool(
-        description = "List every node of the ScreenForge canvas (captures and drawings) with its name, size, annotations and connections. Start here to find node ids."
+        description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, annotations and connections. Start here."
     )]
     async fn get_canvas_snapshot(&self) -> CallToolResult {
-        json_result(tools::canvas_snapshot(&self.root))
+        output_result(tools::canvas_snapshot(&self.root))
     }
 
     #[tool(
-        description = "Get one canvas node in detail: metadata, user instructions, connections, inline SVG and colors, plus the PNG render as an image."
+        description = "Get one canvas node in detail: metadata, position, user instructions, connections, inline SVG and colors, plus its PNG render as an image. For a frame (a screen), the image is the whole screen and `children` lists its elements in reading order."
     )]
     async fn get_node_detail(&self, Parameters(p): Parameters<NodeIdParams>) -> CallToolResult {
-        match tools::node_detail(&self.root, &p.node_id) {
-            Ok(detail) => {
-                let mut blocks = vec![ContentBlock::text(detail.json.to_string())];
-                if let Some(png) = detail.png {
-                    let data = base64::engine::general_purpose::STANDARD.encode(png);
-                    blocks.push(ContentBlock::image(data, "image/png"));
-                }
-                CallToolResult::success(blocks)
-            }
-            Err(e) => error_result(e),
-        }
+        output_result(tools::node_detail(&self.root, &p.node_id))
     }
 
     #[tool(
@@ -66,6 +56,20 @@ impl ScreenForgeServer {
         Parameters(p): Parameters<NodeIdParams>,
     ) -> CallToolResult {
         json_result(tools::node_dependencies(&self.root, &p.node_id))
+    }
+}
+
+fn output_result(result: Result<ToolOutput, ToolError>) -> CallToolResult {
+    match result {
+        Ok(output) => {
+            let mut blocks = vec![ContentBlock::text(output.json.to_string())];
+            if let Some(png) = output.png {
+                let data = base64::engine::general_purpose::STANDARD.encode(png);
+                blocks.push(ContentBlock::image(data, "image/png"));
+            }
+            CallToolResult::success(blocks)
+        }
+        Err(e) => error_result(e),
     }
 }
 
@@ -138,6 +142,8 @@ mod tests {
                     width: 320.0,
                     height: 80.0,
                 },
+                position: None,
+                parent: None,
                 colors_detected: vec![],
                 connections: vec![],
                 user_instructions: "Border should be red".into(),
@@ -210,6 +216,17 @@ mod tests {
             image.data,
             base64::engine::general_purpose::STANDARD.encode(&png)
         );
+    }
+
+    #[tokio::test]
+    async fn snapshot_sends_the_canvas_render_as_an_image() {
+        let p = project();
+        sf_core::project::write_canvas_png(p.path(), Some(&[0x89, b'P'])).unwrap();
+        let result = call(p.path(), "get_canvas_snapshot", json!({})).await;
+        let image = result.content[1]
+            .as_image()
+            .expect("second block is an image");
+        assert_eq!(image.mime_type, "image/png");
     }
 
     #[tokio::test]

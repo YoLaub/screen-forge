@@ -28,8 +28,14 @@ export function loadCanvas(root: string): Promise<string | null> {
   return invoke("load_canvas", { root });
 }
 
-export function saveCanvas(root: string, canvasJson: string, nodes: NodeExportDto[]): Promise<void> {
-  return invoke("save_canvas", { root, canvasJson, nodes });
+/** `canvasPngBase64` is the whole-canvas render, null when the canvas is empty. */
+export function saveCanvas(
+  root: string,
+  canvasJson: string,
+  canvasPngBase64: string | null,
+  nodes: NodeExportDto[],
+): Promise<void> {
+  return invoke("save_canvas", { root, canvasJson, canvasPngBase64, nodes });
 }
 
 export function listWindows(): Promise<WindowInfo[]> {

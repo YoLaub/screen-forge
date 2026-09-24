@@ -1,13 +1,16 @@
+import type { Box } from "./geometry";
 import { type Link, toConnections } from "./links";
 
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
-export type NodeKind = "capture" | "vector_drawing";
+export type NodeKind = "capture" | "vector_drawing" | "frame";
 
 export interface NodeRecord {
   id: string;
   type: NodeKind;
   name: string;
   dimensions: { width: number; height: number };
+  position?: { x: number; y: number };
+  parent?: string;
   colors_detected: string[];
   connections: { target_node: string; trigger?: string; payload_type?: string }[];
   user_instructions: string;
@@ -26,8 +29,12 @@ export interface SfProps {
 /** Serialized with the canvas (see FabricObject.customProperties). */
 export const SF_PROPS: (keyof SfProps)[] = ["sfId", "sfKind", "sfName", "sfInstructions", "sfLinks"];
 
-const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec" };
-const NAME_PREFIX: Record<NodeKind, string> = { capture: "Capture", vector_drawing: "Rectangle" };
+const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
+const NAME_PREFIX: Record<NodeKind, string> = {
+  capture: "Capture",
+  vector_drawing: "Rectangle",
+  frame: "Frame",
+};
 
 /** Matches sf-core's id rule: [A-Za-z0-9_-]. */
 export function newNodeId(kind: NodeKind): string {
@@ -46,8 +53,11 @@ export function nextNodeName(kind: NodeKind, existing: string[]): string {
   return `${prefix} ${highest + 1}`;
 }
 
+/** `bounds` (scene coordinates) gives the position; `parent` is the containing frame. */
 export function toNodeRecord(
   obj: SfProps & { width: number; height: number; scaleX: number; scaleY: number },
+  bounds?: Box,
+  parent?: string,
 ): NodeRecord {
   return {
     id: obj.sfId,
@@ -57,6 +67,8 @@ export function toNodeRecord(
       width: Math.round(obj.width * obj.scaleX),
       height: Math.round(obj.height * obj.scaleY),
     },
+    ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
+    ...(parent && { parent }),
     colors_detected: [],
     connections: toConnections(obj.sfLinks ?? []),
     user_instructions: obj.sfInstructions,

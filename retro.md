@@ -58,3 +58,13 @@
   A stable local signing identity would remove this step (not done yet).
 - The shortcut's first design (open the picker) failed across desktops and
   did not match what the owner expected (an instant capture).
+
+## canvas-understanding (2026-09-24)
+- A suspected zoom bug was a misread screenshot (displayed downscaled). Pixel
+  measurements in the page settled it before any code change.
+- An empty `nodes/` after a test looked like data loss; it was the owner's own
+  clean-up. The investigation still found a real path to data loss (save after
+  a failed load) and closed it.
+- Claude, given only the MCP, described the login screen's element order, the
+  column offset and the open questions (email or username, where to go after
+  login): the layout information is what makes the difference.

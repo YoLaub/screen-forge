@@ -19,12 +19,14 @@ pub struct NodeExportDto {
     pub png_base64: Option<String>,
 }
 
-fn to_export(dto: NodeExportDto) -> Result<NodeExport, String> {
-    let png = dto
-        .png_base64
-        .map(|b64| base64::engine::general_purpose::STANDARD.decode(b64))
+fn decode_png(b64: Option<String>, what: &str) -> Result<Option<Vec<u8>>, String> {
+    b64.map(|b64| base64::engine::general_purpose::STANDARD.decode(b64))
         .transpose()
-        .map_err(|e| format!("invalid PNG for node {}: {e}", dto.node.id))?;
+        .map_err(|e| format!("invalid PNG for {what}: {e}"))
+}
+
+fn to_export(dto: NodeExportDto) -> Result<NodeExport, String> {
+    let png = decode_png(dto.png_base64, &format!("node {}", dto.node.id))?;
     Ok(NodeExport {
         node: dto.node,
         svg: dto.svg,
@@ -50,13 +52,16 @@ fn write_last_project(config_dir: &Path, root: &Path) -> Result<(), String> {
 pub fn save_canvas(
     root: PathBuf,
     canvas_json: String,
+    canvas_png_base64: Option<String>,
     nodes: Vec<NodeExportDto>,
 ) -> Result<(), String> {
     let exports = nodes
         .into_iter()
         .map(to_export)
         .collect::<Result<Vec<_>, _>>()?;
-    project::save_project(&root, &canvas_json, &exports).map_err(|e| e.to_string())
+    let canvas_png = decode_png(canvas_png_base64, "the canvas")?;
+    project::save_project(&root, &canvas_json, &exports).map_err(|e| e.to_string())?;
+    project::write_canvas_png(&root, canvas_png.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -99,6 +104,17 @@ mod tests {
         let export = to_export(dto(Some("AQID"))).unwrap();
         assert_eq!(export.png, Some(vec![1, 2, 3]));
         assert_eq!(export.node.id, "cap_1");
+    }
+
+    #[test]
+    fn decode_png_names_what_failed() {
+        assert_eq!(decode_png(None, "the canvas"), Ok(None));
+        assert_eq!(
+            decode_png(Some("AQID".into()), "the canvas"),
+            Ok(Some(vec![1, 2, 3]))
+        );
+        let err = decode_png(Some("not base64!".into()), "the canvas").unwrap_err();
+        assert!(err.starts_with("invalid PNG for the canvas"), "{err}");
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde_json::{Map, Value, json};
+use sf_core::node::NodeKind;
 use sf_core::store::{self, PNG_FILE_NAME, SVG_FILE_NAME, StoreError};
 
 /// Messages shown to the agent. Kept as constants so tests compare them exactly.
@@ -31,21 +32,33 @@ impl From<StoreError> for ToolError {
     }
 }
 
-/// A node detail: the JSON payload plus the PNG render, sent as a separate image block.
+/// A tool payload: JSON plus an optional PNG, sent as a separate image block.
 #[derive(Debug)]
-pub struct NodeDetail {
+pub struct ToolOutput {
     pub json: Value,
     pub png: Option<Vec<u8>>,
 }
 
 /// Every node of the canvas, without renders.
-pub fn canvas_snapshot(root: &Path) -> Result<Value, ToolError> {
+pub fn canvas_snapshot(root: &Path) -> Result<ToolOutput, ToolError> {
     let nodes = store::list_nodes(root)?;
-    Ok(json!({ "nodes": nodes }))
+    let mut screens = Vec::new();
+    for frame in nodes.iter().filter(|n| n.kind == NodeKind::Frame) {
+        let children: Vec<String> = store::node_children(root, &frame.id)?
+            .into_iter()
+            .map(|n| n.id)
+            .collect();
+        screens.push(json!({ "id": frame.id, "name": frame.name, "children": children }));
+    }
+    let png = sf_core::project::load_canvas_png(root)?;
+    Ok(ToolOutput {
+        json: json!({ "screens": screens, "nodes": nodes }),
+        png,
+    })
 }
 
 /// One node with its SVG (inline) and PNG (separate), in the spec §7 shape.
-pub fn node_detail(root: &Path, id: &str) -> Result<NodeDetail, ToolError> {
+pub fn node_detail(root: &Path, id: &str) -> Result<ToolOutput, ToolError> {
     let node = store::read_node(root, id)?;
     let dir = store::node_dir(root, id)?;
     let svg = read_optional(&dir.join(SVG_FILE_NAME))?
@@ -63,7 +76,14 @@ pub fn node_detail(root: &Path, id: &str) -> Result<NodeDetail, ToolError> {
         "visual_context".into(),
         json!({ "svg": svg, "colors_detected": colors }),
     );
-    Ok(NodeDetail { json, png })
+    if node.kind == NodeKind::Frame {
+        let children: Vec<Value> = store::node_children(root, id)?
+            .into_iter()
+            .map(|n| json!({ "id": n.id, "name": n.name, "type": n.kind }))
+            .collect();
+        fields.insert("children".into(), Value::Array(children));
+    }
+    Ok(ToolOutput { json, png })
 }
 
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, ToolError> {
@@ -117,6 +137,8 @@ mod tests {
                 width: 240.0,
                 height: 48.0,
             },
+            position: None,
+            parent: None,
             colors_detected: vec!["#3B82F6".into()],
             connections: links
                 .iter()
@@ -142,7 +164,7 @@ mod tests {
     #[test]
     fn snapshot_lists_all_nodes_sorted() {
         let p = project_with(&[node("b", &[("a", "onClick")]), node("a", &[])]);
-        let snap = canvas_snapshot(p.path()).unwrap();
+        let snap = canvas_snapshot(p.path()).unwrap().json;
         let ids: Vec<_> = snap["nodes"]
             .as_array()
             .unwrap()
@@ -156,7 +178,64 @@ mod tests {
     #[test]
     fn snapshot_of_empty_project_has_no_nodes() {
         let p = project_with(&[]);
-        assert_eq!(canvas_snapshot(p.path()).unwrap(), json!({ "nodes": [] }));
+        let snap = canvas_snapshot(p.path()).unwrap();
+        assert_eq!(snap.json, json!({ "screens": [], "nodes": [] }));
+        assert_eq!(snap.png, None);
+    }
+
+    fn placed(id: &str, kind: NodeKind, parent: Option<&str>, x: f64, y: f64) -> Node {
+        let mut n = node(id, &[]);
+        n.kind = kind;
+        n.name = format!("Name of {id}");
+        n.parent = parent.map(str::to_string);
+        n.position = Some(sf_core::node::Position { x, y });
+        n
+    }
+
+    #[test]
+    fn snapshot_lists_screens_with_children_in_reading_order() {
+        let p = project_with(&[
+            placed("login", NodeKind::Frame, None, 0.0, 0.0),
+            placed(
+                "submit",
+                NodeKind::VectorDrawing,
+                Some("login"),
+                20.0,
+                400.0,
+            ),
+            placed("title", NodeKind::VectorDrawing, Some("login"), 20.0, 30.0),
+            placed("stray", NodeKind::Capture, None, 900.0, 0.0),
+        ]);
+        assert_eq!(
+            canvas_snapshot(p.path()).unwrap().json["screens"],
+            json!([{ "id": "login", "name": "Name of login", "children": ["title", "submit"] }])
+        );
+    }
+
+    #[test]
+    fn snapshot_carries_the_canvas_render() {
+        let p = project_with(&[node("a", &[])]);
+        sf_core::project::write_canvas_png(p.path(), Some(&[7, 7])).unwrap();
+        assert_eq!(canvas_snapshot(p.path()).unwrap().png, Some(vec![7, 7]));
+    }
+
+    #[test]
+    fn detail_of_a_frame_lists_its_children() {
+        let p = project_with(&[
+            placed("login", NodeKind::Frame, None, 0.0, 0.0),
+            placed("title", NodeKind::VectorDrawing, Some("login"), 20.0, 30.0),
+        ]);
+        assert_eq!(
+            node_detail(p.path(), "login").unwrap().json["children"],
+            json!([{ "id": "title", "name": "Name of title", "type": "vector_drawing" }])
+        );
+        assert!(
+            node_detail(p.path(), "title")
+                .unwrap()
+                .json
+                .get("children")
+                .is_none()
+        );
     }
 
     #[test]
