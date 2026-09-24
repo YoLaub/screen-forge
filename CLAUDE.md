@@ -18,11 +18,10 @@ Done:
    links.
 3. MCP server over stdio that exposes the nodes (`get_canvas_snapshot`,
    `get_node_detail`, `get_node_dependencies`): US-1 runs end to end.
+4. Agent understanding of the canvas: canvas image, node positions, frames
+   (screens) with their elements in reading order, screen images.
 
 Remaining (the owner does not consider v1 complete without them):
-4. Agent understanding of the canvas: a global canvas image, each node's
-   position and size, and grouping (which elements form one screen), so the
-   agent sees the layout and not just a list of nodes.
 5. Vector drawing tools (spec module B): pen and Bézier curves, shapes, text,
    fills and gradients, layers.
 6. One-click MCP setup for Claude Code / Claude Desktop (US-3, without OAuth).
@@ -30,7 +29,7 @@ Remaining (the owner does not consider v1 complete without them):
 Out of scope for v1: the agent writing to the canvas (`create_node_annotation`,
 `update_node_preview`, corrections), OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket
 transports, region capture, OCR, Windows and Linux. The v1 milestone (dev → main) and a
-stable local signing identity come once goals 4 to 6 are done.
+stable local signing identity come once goals 5 and 6 are done.
 
 ## Constraints
 - macOS only in v1. Keep capture code behind an OS boundary so other platforms
@@ -53,8 +52,11 @@ stable local signing identity come once goals 4 to 6 are done.
 - Persistence and MCP access go through files. Each project's canvas lives in
   `<project root>/.screenforge/`: `canvas.json` (Fabric state, read by the app
   only), and `nodes/<id>/{node.json,export.svg,image.png}` written by the app
-  on every save. `screenforge-mcp` reads `nodes/` only and never parses Fabric
-  JSON. It resolves the project from its working directory.
+  on every save, plus `canvas.png` (whole-canvas render). `screenforge-mcp`
+  reads `nodes/` and `canvas.png` only and never parses Fabric JSON. It
+  resolves the project from its working directory.
+- Frames group nodes: a node's parent is the smallest larger frame containing
+  its center, recomputed by the app on every save.
 - `crates/sf-core` is the single owner of the `.screenforge/` layout.
 - Tooling: pnpm, Vitest (front), `cargo test` (Rust).
 - External docs (Fabric, rmcp, Tauri v2): use a generic doc tool. Whether a
@@ -81,7 +83,8 @@ stable local signing identity come once goals 4 to 6 are done.
 - Front: `pnpm test` · `pnpm typecheck`
 - Rust: `cargo test --workspace`
 - MCP server: `cargo build -p sf-mcp` → `target/debug/screenforge-mcp` (run from
-  the project root; register with `claude mcp add screenforge -- <path>`)
+  the project root; register with `claude mcp add screenforge -- <path>`).
+  Rebuild it before any MCP E2E: `cargo test` does not.
 - Packaged build: `pnpm tauri build --bundles app`. Test capture there, and after
   each rebuild run `tccutil reset ScreenCapture dev.screenforge.desktop` (ad-hoc
   signing changes the app identity, so the old Screen Recording grant is stale).
