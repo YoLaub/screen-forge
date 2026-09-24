@@ -139,6 +139,7 @@ mod tests {
             },
             position: None,
             parent: None,
+            text: None,
             colors_detected: vec!["#3B82F6".into()],
             connections: links
                 .iter()

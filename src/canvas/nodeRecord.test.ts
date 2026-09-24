@@ -20,6 +20,7 @@ describe("nextNodeName", () => {
     expect(nextNodeName("capture", ["Capture 1", "Capture 4", "Rectangle 9"])).toBe("Capture 5");
     expect(nextNodeName("vector_drawing", ["Capture 2"])).toBe("Rectangle 1");
     expect(nextNodeName("frame", ["Frame 1"])).toBe("Frame 2");
+    expect(nextNodeName("vector_drawing", ["Ellipse 2", "Rectangle 5"], "Ellipse")).toBe("Ellipse 3");
   });
 });
 
@@ -79,5 +80,20 @@ describe("toNodeRecord", () => {
     );
     expect(record.position).toEqual({ x: 12, y: -4 });
     expect(record.parent).toBe("frm_1");
+  });
+
+  it("carries the content of a text element", () => {
+    const obj = {
+      sfId: "vec_t",
+      sfKind: "vector_drawing" as const,
+      sfName: "Text 1",
+      sfInstructions: "",
+      width: 10,
+      height: 10,
+      scaleX: 1,
+      scaleY: 1,
+    };
+    expect(toNodeRecord(obj, undefined, undefined, "Connexion").text).toBe("Connexion");
+    expect(toNodeRecord(obj)).not.toHaveProperty("text");
   });
 });

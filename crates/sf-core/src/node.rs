@@ -18,6 +18,9 @@ pub struct Node {
     /// Id of the frame that contains this node, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// Content of a text element, readable by the agent without OCR.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     #[serde(default)]
     pub colors_detected: Vec<String>,
     #[serde(default)]
@@ -81,6 +84,7 @@ mod tests {
             },
             position: None,
             parent: None,
+            text: None,
             colors_detected: vec!["#3B82F6".into(), "#FFFFFF".into()],
             connections: vec![Connection {
                 target_node: "modal_success".into(),
@@ -146,6 +150,7 @@ mod tests {
             },
             position: Some(Position { x: -40.0, y: 10.5 }),
             parent: None,
+            text: None,
             colors_detected: vec![],
             connections: vec![],
             user_instructions: String::new(),
@@ -172,6 +177,25 @@ mod tests {
         .unwrap();
         assert_eq!(node.position, None);
         assert_eq!(node.parent, None);
+    }
+
+    #[test]
+    fn text_nodes_carry_their_text_and_others_omit_it() {
+        let mut label = sample();
+        label.text = Some("Connexion".into());
+        assert_eq!(serde_json::to_value(&label).unwrap()["text"], "Connexion");
+        assert!(
+            serde_json::to_value(sample())
+                .unwrap()
+                .get("text")
+                .is_none()
+        );
+        let old: Node = serde_json::from_value(json!({
+            "id": "vec_1", "type": "vector_drawing", "name": "Old",
+            "dimensions": { "width": 1, "height": 1 }
+        }))
+        .unwrap();
+        assert_eq!(old.text, None);
     }
 
     #[test]

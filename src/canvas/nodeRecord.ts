@@ -11,6 +11,7 @@ export interface NodeRecord {
   dimensions: { width: number; height: number };
   position?: { x: number; y: number };
   parent?: string;
+  text?: string;
   colors_detected: string[];
   connections: { target_node: string; trigger?: string; payload_type?: string }[];
   user_instructions: string;
@@ -43,8 +44,8 @@ export function newNodeId(kind: NodeKind): string {
   return `${ID_PREFIX[kind]}_${suffix}`;
 }
 
-export function nextNodeName(kind: NodeKind, existing: string[]): string {
-  const prefix = NAME_PREFIX[kind];
+/** Next free "<prefix> N" name; the prefix defaults to the kind's (e.g. "Capture"). */
+export function nextNodeName(kind: NodeKind, existing: string[], prefix = NAME_PREFIX[kind]): string {
   const pattern = new RegExp(`^${prefix} (\\d+)$`);
   const highest = existing.reduce((max, name) => {
     const n = Number(pattern.exec(name)?.[1] ?? 0);
@@ -53,11 +54,15 @@ export function nextNodeName(kind: NodeKind, existing: string[]): string {
   return `${prefix} ${highest + 1}`;
 }
 
-/** `bounds` (scene coordinates) gives the position; `parent` is the containing frame. */
+/**
+ * `bounds` (scene coordinates) gives the position; `parent` is the containing
+ * frame; `text` is the content of a text element.
+ */
 export function toNodeRecord(
   obj: SfProps & { width: number; height: number; scaleX: number; scaleY: number },
   bounds?: Box,
   parent?: string,
+  text?: string,
 ): NodeRecord {
   return {
     id: obj.sfId,
@@ -69,6 +74,7 @@ export function toNodeRecord(
     },
     ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
     ...(parent && { parent }),
+    ...(text !== undefined && { text }),
     colors_detected: [],
     connections: toConnections(obj.sfLinks ?? []),
     user_instructions: obj.sfInstructions,

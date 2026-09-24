@@ -81,3 +81,9 @@
 - The registrations point into `target/release/bundle/...` for now; they must
   be redone once the app lives in /Applications (the panel shows
   "Points to another server").
+
+## shapes-text (2026-09-24)
+- The Claude Code / Claude Desktop registrations point at the bundled server,
+  which only gets new node fields after `pnpm bundle`. Until then they silently
+  miss `text` (no error): an old server reading a newer file is the risk to
+  watch whenever the node model grows.

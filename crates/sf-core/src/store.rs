@@ -189,6 +189,7 @@ mod tests {
             },
             position: None,
             parent: None,
+            text: None,
             colors_detected: vec![],
             connections: links
                 .iter()
