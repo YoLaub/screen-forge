@@ -3,6 +3,7 @@
 //! The app writes a project's canvas under `<project root>/.screenforge/`; the MCP
 //! server only ever reads it. This crate is the single owner of that layout.
 
+pub mod app_state;
 pub mod node;
 pub mod project;
 pub mod store;

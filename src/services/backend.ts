@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { AgentClient, AgentStatus } from "../AgentSetup";
 import type { NodeRecord } from "../canvas/nodeRecord";
 import type { WindowInfo } from "../canvas/WindowPicker";
 
@@ -73,4 +74,12 @@ export function ensureScreenCaptureAccess(): Promise<boolean> {
 
 export function openScreenCaptureSettings(): Promise<void> {
   return invoke("open_screen_capture_settings");
+}
+
+export function agentStatus(): Promise<AgentStatus> {
+  return invoke("agent_status");
+}
+
+export function configureAgent(client: AgentClient): Promise<void> {
+  return invoke(client === "claude_code" ? "configure_claude_code" : "configure_claude_desktop");
 }
