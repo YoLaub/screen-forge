@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignParents, renderScale, unionBox } from "./layout";
+import { assignParents, descendants, renderScale, unionBox } from "./layout";
 
 const box = (left: number, top: number, width: number, height: number) => ({ left, top, width, height });
 
@@ -39,5 +39,13 @@ describe("renderScale", () => {
     expect(renderScale(box(0, 0, 800, 600), 2000)).toBe(1);
     expect(renderScale(box(0, 0, 4000, 1000), 2000)).toBe(0.5);
     expect(renderScale(box(0, 0, 1000, 8000), 2000)).toBe(0.25);
+  });
+});
+
+describe("descendants", () => {
+  it("collects children and grandchildren of a frame", () => {
+    const parents = { page: undefined, card: "page", button: "card", footer: "page", other: undefined };
+    expect(descendants(parents, "page").sort()).toEqual(["button", "card", "footer"]);
+    expect(descendants(parents, "button")).toEqual([]);
   });
 });

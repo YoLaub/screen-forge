@@ -46,3 +46,9 @@ export function unionBox(boxes: Box[], margin: number): Box | null {
 export function renderScale(box: Box, maxSide: number): number {
   return Math.min(1, maxSide / Math.max(box.width, box.height));
 }
+
+/** Every item under frame `id`, at any depth. */
+export function descendants(parents: Record<string, string | undefined>, id: string): string[] {
+  const direct = Object.keys(parents).filter((child) => parents[child] === id);
+  return direct.flatMap((child) => [child, ...descendants(parents, child)]);
+}
