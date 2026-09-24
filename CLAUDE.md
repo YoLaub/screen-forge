@@ -34,7 +34,9 @@ injector, OCR, Windows and Linux.
 - UI: React 19 + Tailwind CSS + Radix UI.
 - Canvas: Fabric.js (infinite pan/zoom and connectors built in-house).
   Boolean operations will come from Paper.js when the vector studio lands.
-- Capture: `xcap`.
+- Capture: `xcap`, macOS only, current desktop only. Button = window picker;
+  Cmd+Shift+X = instant capture of the largest window of the app in front.
+  Only normal windows (kCGWindowLayer 0) are offered.
 - MCP server: Rust, using the official `rmcp` SDK. This deviates from spec §6,
   which named the TypeScript SDK: Rust avoids bundling a Node runtime. The
   server is a separate `screenforge-mcp` binary (crate `crates/sf-mcp`).
@@ -70,7 +72,9 @@ injector, OCR, Windows and Linux.
 - Rust: `cargo test --workspace`
 - MCP server: `cargo build -p sf-mcp` → `target/debug/screenforge-mcp` (run from
   the project root; register with `claude mcp add screenforge -- <path>`)
-- Packaged build: `pnpm tauri build`
+- Packaged build: `pnpm tauri build --bundles app`. Test capture there, and after
+  each rebuild run `tccutil reset ScreenCapture dev.screenforge.desktop` (ad-hoc
+  signing changes the app identity, so the old Screen Recording grant is stale).
 
 BRAIN: ~/brain/screen-forge
 
