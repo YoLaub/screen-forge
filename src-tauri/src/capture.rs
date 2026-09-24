@@ -46,10 +46,21 @@ fn pickable_windows(raw: Vec<RawWindow>, own_pid: u32) -> Vec<WindowInfo> {
     windows
 }
 
-/// The window the user is looking at: `raw` is in OS order, front to back.
+/// The window the user is looking at: the largest window of the app in front.
+/// `raw` is in OS order, front to back. Apps such as full-screen Chrome stack
+/// transparent overlay windows in front of their real window.
 fn frontmost_window(raw: Vec<RawWindow>, own_pid: u32) -> Option<WindowInfo> {
-    raw.into_iter()
-        .find(|w| is_pickable(w, own_pid))
+    let pickable: Vec<RawWindow> = raw
+        .into_iter()
+        .filter(|w| is_pickable(w, own_pid))
+        .collect();
+    let front_pid = pickable.first()?.pid;
+    pickable
+        .into_iter()
+        .filter(|w| w.pid == front_pid)
+        // Reversed so that, between equal sizes, the window nearest the front wins.
+        .rev()
+        .max_by_key(|w| u64::from(w.info.width) * u64::from(w.info.height))
         .map(|w| w.info)
 }
 
@@ -338,6 +349,28 @@ mod tests {
     }
 
     #[test]
+    fn frontmost_is_the_largest_window_of_the_app_in_front() {
+        // Full-screen Chrome, as listed by macOS: transparent tab-strip overlays
+        // stacked in front of the real window.
+        let sized = |id, w, h, pid| {
+            let mut win = raw(id, "Google Chrome", "", pid);
+            win.info.width = w;
+            win.info.height = h;
+            win
+        };
+        let front = frontmost_window(
+            vec![
+                sized(15482, 1470, 81, 10),
+                sized(15484, 1470, 158, 10),
+                sized(15479, 1470, 801, 10),
+                raw(20, "Terminal", "zsh", 11),
+            ],
+            99,
+        );
+        assert_eq!(front.map(|w| w.id), Some(15479));
+    }
+
+    #[test]
     fn no_frontmost_when_only_system_windows_are_visible() {
         // What macOS shows without the Screen Recording permission.
         assert_eq!(
@@ -355,8 +388,14 @@ mod tests {
     #[ignore]
     fn window_levels_sees_normal_and_raised_windows() {
         let levels = window_levels();
-        assert!(levels.values().any(|&l| l == 0), "no normal window: {levels:?}");
-        assert!(levels.values().any(|&l| l > 0), "no menu bar or Dock: {levels:?}");
+        assert!(
+            levels.values().any(|&l| l == 0),
+            "no normal window: {levels:?}"
+        );
+        assert!(
+            levels.values().any(|&l| l > 0),
+            "no menu bar or Dock: {levels:?}"
+        );
     }
 
     #[test]
