@@ -23,8 +23,10 @@ Done:
 6. One-click MCP setup for Claude Code / Claude Desktop (US-3, without OAuth).
 
 Remaining (the owner does not consider v1 complete without it):
-5. Vector drawing tools (spec module B): pen and Bézier curves, shapes, text,
-   fills and gradients, layers.
+5. Vector drawing tools (spec module B), in four features, in this order:
+   5.1 shapes and text, 5.2 styles (fill, stroke, radius, opacity, gradients),
+   5.3 pen and Bézier curves, 5.4 layers panel and boolean operations
+   (Paper.js).
 
 Out of scope for v1: the agent writing to the canvas (`create_node_annotation`,
 `update_node_preview`, corrections), OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket
