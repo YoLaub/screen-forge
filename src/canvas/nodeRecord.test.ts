@@ -5,6 +5,7 @@ describe("newNodeId", () => {
   it("prefixes by kind and only uses id-safe characters", () => {
     expect(newNodeId("capture")).toMatch(/^cap_[a-z0-9]{8}$/);
     expect(newNodeId("vector_drawing")).toMatch(/^vec_[a-z0-9]{8}$/);
+    expect(newNodeId("frame")).toMatch(/^frm_[a-z0-9]{8}$/);
   });
 
   it("does not repeat", () => {
@@ -18,6 +19,7 @@ describe("nextNodeName", () => {
     expect(nextNodeName("capture", [])).toBe("Capture 1");
     expect(nextNodeName("capture", ["Capture 1", "Capture 4", "Rectangle 9"])).toBe("Capture 5");
     expect(nextNodeName("vector_drawing", ["Capture 2"])).toBe("Rectangle 1");
+    expect(nextNodeName("frame", ["Frame 1"])).toBe("Frame 2");
   });
 });
 
@@ -58,5 +60,24 @@ describe("toNodeRecord", () => {
       scaleY: 1,
     });
     expect(record.connections).toEqual([{ target_node: "cap_2", trigger: "onError" }]);
+  });
+
+  it("adds the position and the parent frame", () => {
+    const record = toNodeRecord(
+      {
+        sfId: "vec_1",
+        sfKind: "vector_drawing",
+        sfName: "Button",
+        sfInstructions: "",
+        width: 10,
+        height: 10,
+        scaleX: 1,
+        scaleY: 1,
+      },
+      { left: 12.4, top: -3.6, width: 10, height: 10 },
+      "frm_1",
+    );
+    expect(record.position).toEqual({ x: 12, y: -4 });
+    expect(record.parent).toBe("frm_1");
   });
 });
