@@ -35,7 +35,7 @@ impl ScreenForgeServer {
     }
 
     #[tool(
-        description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, text content, annotations and connections. Start here."
+        description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, text content, style (colors, stroke, radius, gradient, font), annotations and connections. Start here."
     )]
     async fn get_canvas_snapshot(&self) -> CallToolResult {
         output_result(tools::canvas_snapshot(&self.root))
@@ -145,6 +145,7 @@ mod tests {
                 position: None,
                 parent: None,
                 text: None,
+                style: None,
                 colors_detected: vec![],
                 connections: vec![],
                 user_instructions: "Border should be red".into(),

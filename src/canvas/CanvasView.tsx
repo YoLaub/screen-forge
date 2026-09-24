@@ -4,6 +4,7 @@ import {
   FabricImage,
   FabricObject,
   FabricText,
+  Gradient,
   IText,
   Line,
   Path,
@@ -27,6 +28,8 @@ import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
+import { type StyledLike, readStyle, toFabricProps } from "./style";
+import type { StyleApplies } from "./StyleSection";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
@@ -78,7 +81,12 @@ function exportNode(
   parents: Record<string, string | undefined>,
 ): NodeExportDto {
   const bounds = obj.getBoundingRect();
-  const node = toNodeRecord(obj, bounds, parents[obj.sfId], obj instanceof IText ? obj.text : undefined);
+  const node = toNodeRecord(obj, {
+    bounds,
+    parent: parents[obj.sfId],
+    text: obj instanceof IText ? obj.text : undefined,
+    style: styleOf(obj),
+  });
   if (obj.sfKind === "frame") {
     // A frame's image is the whole screen: the frame with everything placed on it.
     return { node, svg: null, png_base64: renderRegion(canvas, bounds) };
@@ -92,6 +100,17 @@ function exportNode(
   return { node, svg: wrapSvg(obj.toSVG(), obj.getBoundingRect()), png_base64: dataUrlToBase64(png) };
 }
 
+/** Style properties that apply to `obj`; undefined for captures (bitmaps). */
+function appliesOf(obj: FabricObject & SfProps): StyleApplies | undefined {
+  if (obj.sfKind === "capture") return undefined;
+  return { fill: !(obj instanceof Line), radius: obj instanceof Rect, text: obj instanceof IText };
+}
+
+function styleOf(obj: FabricObject & SfProps) {
+  const applies = appliesOf(obj);
+  return applies && readStyle(obj as unknown as StyledLike, applies);
+}
+
 function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
   return {
     id: obj.sfId,
@@ -99,6 +118,8 @@ function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
     name: obj.sfName,
     instructions: obj.sfInstructions,
     links: obj.sfLinks ?? [],
+    style: styleOf(obj),
+    styleApplies: appliesOf(obj),
   };
 }
 
@@ -535,6 +556,13 @@ export default function CanvasView({ root }: { root: string }) {
     if (patch.name !== undefined) obj.sfName = patch.name;
     if (patch.instructions !== undefined) obj.sfInstructions = patch.instructions;
     if (patch.links !== undefined) obj.sfLinks = patch.links;
+    const applies = appliesOf(obj);
+    if (patch.style !== undefined && applies) {
+      const { fill, ...props } = toFabricProps(patch.style, applies);
+      obj.set({ ...props, fill: typeof fill === "string" ? fill : new Gradient(fill) });
+      obj.setCoords();
+      canvas!.requestRenderAll();
+    }
     afterEditRef.current();
   }
 

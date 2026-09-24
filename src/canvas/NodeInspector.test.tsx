@@ -60,4 +60,22 @@ describe("NodeInspector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove link to Login form" }));
     expect(onChange).toHaveBeenLastCalledWith({ links: [] });
   });
+
+  it("shows the style of a drawing and reports style edits", () => {
+    const onChange = vi.fn();
+    render(
+      <NodeInspector
+        node={{ ...node, kind: "vector_drawing", style: { fill: "#E5E7EB" }, styleApplies: { fill: true, radius: true, text: false } }}
+        others={others}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Opacity"), { target: { value: "40" } });
+    expect(onChange).toHaveBeenLastCalledWith({ style: { fill: "#E5E7EB", opacity: 0.4 } });
+  });
+
+  it("has no style section for a capture", () => {
+    setup();
+    expect(screen.queryByText("Style")).not.toBeInTheDocument();
+  });
 });

@@ -1,5 +1,6 @@
 import type { Box } from "./geometry";
 import { type Link, toConnections } from "./links";
+import { type NodeStyle, colorsOf } from "./style";
 
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
 export type NodeKind = "capture" | "vector_drawing" | "frame";
@@ -12,6 +13,7 @@ export interface NodeRecord {
   position?: { x: number; y: number };
   parent?: string;
   text?: string;
+  style?: NodeStyle;
   colors_detected: string[];
   connections: { target_node: string; trigger?: string; payload_type?: string }[];
   user_instructions: string;
@@ -54,15 +56,19 @@ export function nextNodeName(kind: NodeKind, existing: string[], prefix = NAME_P
   return `${prefix} ${highest + 1}`;
 }
 
-/**
- * `bounds` (scene coordinates) gives the position; `parent` is the containing
- * frame; `text` is the content of a text element.
- */
+export interface RecordExtras {
+  /** Scene bounds: gives the position. */
+  bounds?: Box;
+  /** Id of the containing frame. */
+  parent?: string;
+  /** Content of a text element. */
+  text?: string;
+  style?: NodeStyle;
+}
+
 export function toNodeRecord(
   obj: SfProps & { width: number; height: number; scaleX: number; scaleY: number },
-  bounds?: Box,
-  parent?: string,
-  text?: string,
+  { bounds, parent, text, style }: RecordExtras = {},
 ): NodeRecord {
   return {
     id: obj.sfId,
@@ -75,7 +81,8 @@ export function toNodeRecord(
     ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
     ...(parent && { parent }),
     ...(text !== undefined && { text }),
-    colors_detected: [],
+    ...(style && Object.keys(style).length > 0 && { style }),
+    colors_detected: style ? colorsOf(style) : [],
     connections: toConnections(obj.sfLinks ?? []),
     user_instructions: obj.sfInstructions,
   };

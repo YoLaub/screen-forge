@@ -1,5 +1,7 @@
 import { type Link, addLink, removeLink, updateLink } from "./links";
 import type { NodeKind } from "./nodeRecord";
+import type { NodeStyle } from "./style";
+import StyleSection, { type StyleApplies } from "./StyleSection";
 
 export interface InspectorNode {
   id: string;
@@ -7,9 +9,12 @@ export interface InspectorNode {
   name: string;
   instructions: string;
   links: Link[];
+  style?: NodeStyle;
+  /** Absent for nodes without editable style (captures). */
+  styleApplies?: StyleApplies;
 }
 
-export type InspectorPatch = Partial<Pick<InspectorNode, "name" | "instructions" | "links">>;
+export type InspectorPatch = Partial<Pick<InspectorNode, "name" | "instructions" | "links" | "style">>;
 
 interface Props {
   node: InspectorNode;
@@ -44,6 +49,10 @@ export default function NodeInspector({ node, others, onChange }: Props) {
           onChange={(e) => onChange({ instructions: e.target.value })}
         />
       </label>
+
+      {node.styleApplies && (
+        <StyleSection style={node.style ?? {}} applies={node.styleApplies} onStyle={(style) => onChange({ style })} />
+      )}
 
       <section className="flex flex-col gap-2">
         <span className="font-medium text-neutral-700">Links</span>
