@@ -32,7 +32,10 @@ import { firstImageFile } from "./imageFile";
 import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
+import { type BooleanOp, booleanShapes } from "./booleans";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
+import { type LayerRow, layerRows, lockProps } from "./layers";
+import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
@@ -53,6 +56,23 @@ const CANVAS_RENDER_MARGIN = 40;
 function isNode(obj: SfObject): obj is FabricObject & SfProps {
   return typeof obj.sfId === "string";
 }
+
+/** Hidden nodes stay on the canvas (and in the layers) but are not drawn nor sent to the agent. */
+function isShown(obj: FabricObject): boolean {
+  return obj.visible !== false;
+}
+
+/** Shapes a boolean operation can combine (not text, lines, images or frames). */
+function isBooleanShape(obj: FabricObject & SfProps): boolean {
+  return obj.sfKind === "vector_drawing" && !(obj instanceof IText) && !(obj instanceof Line);
+}
+
+const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
+  { op: "union", label: "Union" },
+  { op: "subtract", label: "Subtract" },
+  { op: "intersect", label: "Intersect" },
+  { op: "exclude", label: "Exclude" },
+];
 
 /** PNG of a scene region, independent of the current pan and zoom. */
 function renderRegion(canvas: Canvas, box: Box): string {
@@ -81,6 +101,7 @@ function exportNode(
   canvas: Canvas,
   obj: FabricObject & SfProps,
   parents: Record<string, string | undefined>,
+  shownIds: Set<string>,
 ): NodeExportDto {
   const bounds = obj.getBoundingRect();
   const node = toNodeRecord(obj, {
@@ -88,6 +109,7 @@ function exportNode(
     parent: parents[obj.sfId],
     text: obj instanceof IText ? obj.text : undefined,
     style: styleOf(obj),
+    links: pruneLinks(obj.sfLinks ?? [], shownIds),
   });
   if (obj.sfKind === "frame") {
     // A frame's image is the whole screen: the frame with everything placed on it.
@@ -129,7 +151,7 @@ function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
 /** Link arrows and frame names are display only: rebuilt from node props, never saved. */
 function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
   previous.forEach((a) => canvas.remove(a));
-  const nodes = canvas.getObjects().filter(isNode);
+  const nodes = canvas.getObjects().filter(isNode).filter(isShown);
   const byId = new Map(nodes.map((n) => [n.sfId, n]));
   const overlays: FabricObject[] = [];
   const display = { selectable: false, evented: false, excludeFromExport: true };
@@ -265,6 +287,17 @@ export default function CanvasView({ root }: { root: string }) {
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
+  const [layers, setLayers] = useState<LayerRow[]>([]);
+  const [booleanCount, setBooleanCount] = useState(0);
+  const layerOpsRef = useRef<{
+    select: (id: string) => void;
+    rename: (id: string, name: string) => void;
+    toggleHidden: (id: string) => void;
+    toggleLocked: (id: string) => void;
+    forward: () => void;
+    backward: () => void;
+    combine: (op: BooleanOp) => void;
+  } | null>(null);
   const toolRef = useRef<Tool>("select");
   toolRef.current = tool;
   const [picker, setPicker] = useState<{ windows: WindowInfo[]; permissionMissing: boolean } | null>(
@@ -284,9 +317,10 @@ export default function CanvasView({ root }: { root: string }) {
 
     const autosave = createAutosave(
       async () => {
-        const nodes = canvas.getObjects().filter(isNode);
+        const nodes = canvas.getObjects().filter(isNode).filter(isShown);
         const parents = layoutOf(nodes);
-        const exports = nodes.map((n) => exportNode(canvas, n, parents));
+        const shownIds = new Set(nodes.map((n) => n.sfId));
+        const exports = nodes.map((n) => exportNode(canvas, n, parents, shownIds));
         const extent = unionBox(
           nodes.map((n) => n.getBoundingRect()),
           CANVAS_RENDER_MARGIN,
@@ -303,9 +337,26 @@ export default function CanvasView({ root }: { root: string }) {
       overlays = drawOverlays(canvas, overlays);
     };
     // Arrow objects come and go on every redraw: only node changes trigger a save.
+    const refreshLayers = () => {
+      const nodes = canvas.getObjects().filter(isNode);
+      const parents = layoutOf(nodes);
+      setLayers(
+        layerRows(
+          nodes.map((n) => ({
+            id: n.sfId,
+            name: n.sfName,
+            kind: n.sfKind,
+            parent: parents[n.sfId],
+            hidden: !isShown(n),
+            locked: !!n.sfLocked,
+          })),
+        ),
+      );
+    };
     const onChange = ({ target }: { target: SfObject }) => {
       if (loading || !isNode(target)) return;
       redrawArrows();
+      refreshLayers();
       autosave.schedule();
     };
     canvas.on("object:added", onChange);
@@ -341,6 +392,7 @@ export default function CanvasView({ root }: { root: string }) {
     const syncSelection = () => {
       const active = canvas.getActiveObjects() as SfObject[];
       const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
+      setBooleanCount(active.filter(isNode).filter(isBooleanShape).length);
       setSelected(node ? toInspectorNode(node) : null);
       setOthers(
         canvas
@@ -356,13 +408,94 @@ export default function CanvasView({ root }: { root: string }) {
     afterEditRef.current = () => {
       syncSelection();
       redrawArrows();
+      refreshLayers();
       autosave.schedule();
+    };
+
+    // Layers panel actions. Reordering moves past the other nodes only: arrows
+    // and frame labels are objects of the stack too.
+    const nodeById = (id: string) => canvas.getObjects().filter(isNode).find((n) => n.sfId === id);
+    const restack = (direction: 1 | -1) => {
+      const obj = canvas.getActiveObject() as SfObject | undefined;
+      if (!obj || !isNode(obj)) return;
+      const nodes = canvas.getObjects().filter(isNode);
+      const neighbour = nodes[nodes.indexOf(obj) + direction];
+      if (!neighbour) return;
+      canvas.moveObjectTo(obj, canvas.getObjects().indexOf(neighbour));
+      afterEditRef.current();
+    };
+    layerOpsRef.current = {
+      select: (id) => {
+        const obj = nodeById(id);
+        if (!obj || !isShown(obj)) return;
+        canvas.setActiveObject(obj);
+        canvas.requestRenderAll();
+        syncSelection();
+      },
+      rename: (id, name) => {
+        const obj = nodeById(id);
+        if (!obj) return;
+        obj.sfName = name;
+        afterEditRef.current();
+      },
+      toggleHidden: (id) => {
+        const obj = nodeById(id);
+        if (!obj) return;
+        obj.visible = !isShown(obj);
+        if (!obj.visible && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        afterEditRef.current();
+      },
+      toggleLocked: (id) => {
+        const obj = nodeById(id);
+        if (!obj) return;
+        obj.sfLocked = !obj.sfLocked;
+        obj.set(lockProps(obj.sfLocked));
+        if (obj.sfLocked && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        afterEditRef.current();
+      },
+      forward: () => restack(1),
+      backward: () => restack(-1),
+      combine: (op) => {
+        const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode).filter(isBooleanShape);
+        if (picked.length < 2) return;
+        // Out of the selection group, objects export their absolute placement.
+        canvas.discardActiveObject();
+        const ordered = canvas.getObjects().filter((o) => picked.includes(o as FabricObject & SfProps)) as (FabricObject & SfProps)[];
+        const result = booleanShapes(
+          op,
+          ordered.map((o) => `<svg xmlns="http://www.w3.org/2000/svg">${o.toSVG()}</svg>`),
+        );
+        if (!result) {
+          setStatus(`${op}: nothing is left`);
+          return;
+        }
+        const bottom = ordered[0];
+        const path = result.anchors ? pathFrom(result.anchors, true) : new Path(result.pathData);
+        path.set({ fill: bottom.fill, stroke: bottom.stroke, strokeWidth: bottom.strokeWidth, opacity: bottom.opacity, strokeUniform: true });
+        const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+        const label = BOOLEAN_OPS.find((b) => b.op === op)!.label;
+        tagAsNode(canvas, path, "vector_drawing", nextNodeName("vector_drawing", names, label));
+        canvas.insertAt(canvas.getObjects().indexOf(ordered[ordered.length - 1]) + 1, path);
+        // The originals stay, hidden, so a wrong operation can be undone from the layers.
+        ordered.forEach((o) => (o.visible = false));
+        path.setCoords();
+        canvas.setActiveObject(path);
+        canvas.requestRenderAll();
+        afterEditRef.current();
+      },
     };
 
     loadCanvas(root)
       .then(async (json) => {
         if (json) await canvas.loadFromJSON(json);
+        canvas
+          .getObjects()
+          .filter(isNode)
+          .forEach((n) => n.sfLocked && n.set(lockProps(true)));
         redrawArrows();
+        refreshLayers();
       })
       .catch((error) => {
         // Saving now would mirror an empty canvas and delete every node on disk.
@@ -395,6 +528,11 @@ export default function CanvasView({ root }: { root: string }) {
       }
       if (e.target instanceof HTMLSelectElement) return;
       if (onPenKey(e)) return;
+      if (e.metaKey && (e.key === "]" || e.key === "[")) {
+        e.preventDefault();
+        restack(e.key === "]" ? 1 : -1);
+        return;
+      }
       if (edit) {
         if (e.key === "Escape" || e.key === "Enter") exitEdit();
         e.preventDefault();
@@ -452,7 +590,9 @@ export default function CanvasView({ root }: { root: string }) {
       if (t === "frame") canvas.sendObjectToBack(obj);
       canvas.setActiveObject(obj);
       setTool("select");
+      // The shape was added before it became a node, so onChange skipped it.
       redrawArrows();
+      refreshLayers();
       autosave.schedule();
     };
     canvas.on("mouse:down", ({ e }) => {
@@ -757,6 +897,16 @@ export default function CanvasView({ root }: { root: string }) {
 
   return (
     <div className="flex min-h-0 flex-1">
+      <LayersPanel
+        rows={layers}
+        selectedId={selected?.id ?? null}
+        onSelect={(id) => layerOpsRef.current?.select(id)}
+        onRename={(id, name) => layerOpsRef.current?.rename(id, name)}
+        onToggleHidden={(id) => layerOpsRef.current?.toggleHidden(id)}
+        onToggleLocked={(id) => layerOpsRef.current?.toggleLocked(id)}
+        onForward={() => layerOpsRef.current?.forward()}
+        onBackward={() => layerOpsRef.current?.backward()}
+      />
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
       <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -781,6 +931,20 @@ export default function CanvasView({ root }: { root: string }) {
           >
             Capture window
           </button>
+          {booleanCount >= 2 && (
+            <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+              {BOOLEAN_OPS.map(({ op, label }) => (
+                <button
+                  key={op}
+                  onClick={() => layerOpsRef.current?.combine(op)}
+                  title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
+                  className="px-3 py-1.5 text-sm hover:bg-neutral-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         {picker && (
           <WindowPicker

@@ -111,4 +111,19 @@ describe("toNodeRecord", () => {
     expect(record.style).toEqual({ fill: "#3B82F6", stroke: "#1D4ED8", stroke_width: 1, radius: 8 });
     expect(record.colors_detected).toEqual(["#3B82F6", "#1D4ED8"]);
   });
+
+  it("exports the given links instead of the stored ones (hidden targets filtered out)", () => {
+    const obj = {
+      sfId: "vec_l",
+      sfKind: "vector_drawing" as const,
+      sfName: "Form",
+      sfInstructions: "",
+      sfLinks: [{ target_node: "hidden", trigger: "onClick", payload_type: "" }],
+      width: 10,
+      height: 10,
+      scaleX: 1,
+      scaleY: 1,
+    };
+    expect(toNodeRecord(obj, { links: [] }).connections).toEqual([]);
+  });
 });
