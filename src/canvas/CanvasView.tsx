@@ -2,9 +2,11 @@ import { Canvas, FabricImage, FabricObject, Path, Point, Rect } from "fabric";
 import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
+  ensureScreenCaptureAccess,
   listWindows,
   loadCanvas,
   onOpenCapturePicker,
+  openScreenCaptureSettings,
   saveCanvas,
   type NodeExportDto,
 } from "../services/backend";
@@ -103,7 +105,9 @@ export default function CanvasView({ root }: { root: string }) {
   // Set inside the canvas effect, used by inspector edits.
   const afterEditRef = useRef<() => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
-  const [picker, setPicker] = useState<WindowInfo[] | null>(null);
+  const [picker, setPicker] = useState<{ windows: WindowInfo[]; permissionMissing: boolean } | null>(
+    null,
+  );
 
   useEffect(() => {
     const container = containerRef.current!;
@@ -283,7 +287,8 @@ export default function CanvasView({ root }: { root: string }) {
 
   async function openPicker() {
     try {
-      setPicker(await listWindows());
+      const granted = await ensureScreenCaptureAccess();
+      setPicker({ windows: granted ? await listWindows() : [], permissionMissing: !granted });
     } catch (error) {
       setStatus(`Window list failed: ${String(error)}`);
     }
@@ -350,7 +355,13 @@ export default function CanvasView({ root }: { root: string }) {
           </button>
         </div>
         {picker && (
-          <WindowPicker windows={picker} onPick={pickWindow} onCancel={() => setPicker(null)} />
+          <WindowPicker
+            windows={picker.windows}
+            permissionMissing={picker.permissionMissing}
+            onOpenSettings={() => openScreenCaptureSettings()}
+            onPick={pickWindow}
+            onCancel={() => setPicker(null)}
+          />
         )}
         <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
         <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">

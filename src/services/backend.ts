@@ -45,3 +45,12 @@ export function captureWindow(id: number): Promise<string> {
 export function onOpenCapturePicker(handler: () => void): Promise<UnlistenFn> {
   return listen("open-capture-picker", handler);
 }
+
+/** False when macOS Screen Recording is not granted (first call shows the OS prompt). */
+export function ensureScreenCaptureAccess(): Promise<boolean> {
+  return invoke("ensure_screen_capture_access");
+}
+
+export function openScreenCaptureSettings(): Promise<void> {
+  return invoke("open_screen_capture_settings");
+}

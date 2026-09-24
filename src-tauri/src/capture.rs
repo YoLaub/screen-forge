@@ -87,6 +87,36 @@ pub async fn list_windows() -> Result<Vec<WindowInfo>, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+/// Whether the Screen Recording permission is granted. Without it, macOS only
+/// lists system windows. On first denial, asks macOS to show its prompt once.
+#[tauri::command]
+pub fn ensure_screen_capture_access() -> bool {
+    #[cfg(target_os = "macos")]
+    // SAFETY: plain CoreGraphics calls without arguments (macOS 10.15+).
+    unsafe {
+        CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess()
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+#[tauri::command]
+pub fn open_screen_capture_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Captures window `id` and returns it as a base64 PNG.
 #[tauri::command]
 pub async fn capture_window(id: u32) -> Result<String, String> {

@@ -38,6 +38,8 @@ pub fn run() {
             project::set_last_project,
             capture::list_windows,
             capture::capture_window,
+            capture::ensure_screen_capture_access,
+            capture::open_screen_capture_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

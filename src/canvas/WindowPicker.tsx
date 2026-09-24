@@ -16,11 +16,20 @@ export function captureName(w: WindowInfo): string {
 
 interface Props {
   windows: WindowInfo[];
+  /** macOS Screen Recording permission not granted: the OS only lists system windows. */
+  permissionMissing?: boolean;
+  onOpenSettings?: () => void;
   onPick: (w: WindowInfo) => void;
   onCancel: () => void;
 }
 
-export default function WindowPicker({ windows, onPick, onCancel }: Props) {
+export default function WindowPicker({
+  windows,
+  permissionMissing,
+  onOpenSettings,
+  onPick,
+  onCancel,
+}: Props) {
   const [filter, setFilter] = useState("");
   const needle = filter.trim().toLowerCase();
   const shown = windows.filter((w) => captureName(w).toLowerCase().includes(needle));
@@ -44,11 +53,22 @@ export default function WindowPicker({ windows, onPick, onCancel }: Props) {
           onKeyDown={(e) => e.key === "Escape" && onCancel()}
         />
         <div className="overflow-y-auto py-1">
-          {shown.length === 0 && (
-            <p className="px-3 py-4 text-sm text-neutral-500">
-              No window to capture. If windows are missing, give ScreenForge the Screen Recording
-              permission in System Settings › Privacy &amp; Security.
-            </p>
+          {permissionMissing && (
+            <div className="flex flex-col items-start gap-2 px-3 py-4 text-sm text-neutral-600">
+              <p>
+                The Screen Recording permission is missing, so macOS hides the other apps' windows.
+                Grant it, then quit and reopen ScreenForge.
+              </p>
+              <button
+                onClick={onOpenSettings}
+                className="rounded-md bg-neutral-900 px-3 py-1.5 text-white hover:bg-neutral-700"
+              >
+                Open Screen Recording settings
+              </button>
+            </div>
+          )}
+          {!permissionMissing && shown.length === 0 && (
+            <p className="px-3 py-4 text-sm text-neutral-500">No window to capture.</p>
           )}
           {shown.map((w) => (
             <button

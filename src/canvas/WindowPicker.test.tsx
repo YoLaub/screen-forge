@@ -40,4 +40,20 @@ describe("WindowPicker", () => {
     fireEvent.keyDown(screen.getByLabelText("Filter windows"), { key: "Escape" });
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("explains a missing permission and opens the settings", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <WindowPicker
+        windows={[]}
+        permissionMissing
+        onOpenSettings={onOpenSettings}
+        onPick={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Screen Recording permission is missing/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Screen Recording settings" }));
+    expect(onOpenSettings).toHaveBeenCalled();
+  });
 });
