@@ -1,15 +1,13 @@
 //! Tauri commands for opening and saving a project. Storage logic lives in sf-core.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use base64::Engine;
 use serde::Deserialize;
+use sf_core::app_state;
 use sf_core::node::Node;
 use sf_core::project::{self, NodeExport};
 use tauri::Manager;
-
-const LAST_PROJECT_FILE: &str = "last_project";
 
 /// A node as sent by the front: the PNG arrives base64-encoded over IPC.
 #[derive(Debug, Deserialize)]
@@ -32,20 +30,6 @@ fn to_export(dto: NodeExportDto) -> Result<NodeExport, String> {
         svg: dto.svg,
         png,
     })
-}
-
-fn read_last_project(config_dir: &Path) -> Option<PathBuf> {
-    let path = PathBuf::from(fs::read_to_string(config_dir.join(LAST_PROJECT_FILE)).ok()?);
-    path.is_dir().then_some(path)
-}
-
-fn write_last_project(config_dir: &Path, root: &Path) -> Result<(), String> {
-    fs::create_dir_all(config_dir).map_err(|e| e.to_string())?;
-    fs::write(
-        config_dir.join(LAST_PROJECT_FILE),
-        root.to_string_lossy().as_bytes(),
-    )
-    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -72,20 +56,19 @@ pub fn load_canvas(root: PathBuf) -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn get_last_project(app: tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
-    read_last_project(&dir)
+    app_state::read_last_project(&dir)
 }
 
 #[tauri::command]
 pub fn set_last_project(app: tauri::AppHandle, root: PathBuf) -> Result<(), String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    write_last_project(&dir, &root)
+    app_state::write_last_project(&dir, &root).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    use tempfile::TempDir;
 
     fn dto(png_base64: Option<&str>) -> NodeExportDto {
         serde_json::from_value(json!({
@@ -125,26 +108,5 @@ mod tests {
     #[test]
     fn no_png_stays_none() {
         assert_eq!(to_export(dto(None)).unwrap().png, None);
-    }
-
-    #[test]
-    fn last_project_round_trips_and_creates_the_config_dir() {
-        let tmp = TempDir::new().unwrap();
-        let config = tmp.path().join("config");
-        assert_eq!(read_last_project(&config), None);
-        let project = tmp.path().join("my app");
-        fs::create_dir(&project).unwrap();
-        write_last_project(&config, &project).unwrap();
-        assert_eq!(read_last_project(&config), Some(project));
-    }
-
-    #[test]
-    fn last_project_that_no_longer_exists_is_ignored() {
-        let tmp = TempDir::new().unwrap();
-        let project = tmp.path().join("gone");
-        fs::create_dir(&project).unwrap();
-        write_last_project(tmp.path(), &project).unwrap();
-        fs::remove_dir(&project).unwrap();
-        assert_eq!(read_last_project(tmp.path()), None);
     }
 }
