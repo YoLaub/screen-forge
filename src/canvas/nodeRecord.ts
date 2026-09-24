@@ -31,6 +31,8 @@ export interface SfProps {
   /** Pen paths: their points (in path coordinates) and whether they are closed. */
   sfAnchors?: Anchor[];
   sfClosed?: boolean;
+  /** Locked in the layers panel: not selectable or movable on the canvas. */
+  sfLocked?: boolean;
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
@@ -42,6 +44,7 @@ export const SF_PROPS: (keyof SfProps)[] = [
   "sfLinks",
   "sfAnchors",
   "sfClosed",
+  "sfLocked",
 ];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
@@ -76,11 +79,13 @@ export interface RecordExtras {
   /** Content of a text element. */
   text?: string;
   style?: NodeStyle;
+  /** Links to export instead of the stored ones (e.g. without hidden targets). */
+  links?: Link[];
 }
 
 export function toNodeRecord(
   obj: SfProps & { width: number; height: number; scaleX: number; scaleY: number },
-  { bounds, parent, text, style }: RecordExtras = {},
+  { bounds, parent, text, style, links }: RecordExtras = {},
 ): NodeRecord {
   return {
     id: obj.sfId,
@@ -95,7 +100,7 @@ export function toNodeRecord(
     ...(text !== undefined && { text }),
     ...(style && Object.keys(style).length > 0 && { style }),
     colors_detected: style ? colorsOf(style) : [],
-    connections: toConnections(obj.sfLinks ?? []),
+    connections: toConnections(links ?? obj.sfLinks ?? []),
     user_instructions: obj.sfInstructions,
   };
 }

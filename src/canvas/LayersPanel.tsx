@@ -62,7 +62,7 @@ export default function LayersPanel({
         {rows.map(({ item, depth }) => (
           <li
             key={item.id}
-            className={`flex items-center gap-1 px-2 py-1 ${item.id === selectedId ? "bg-blue-50" : "hover:bg-neutral-50"} ${
+            className={`group flex items-center gap-1 px-2 py-1 ${item.id === selectedId ? "bg-blue-50" : "hover:bg-neutral-50"} ${
               item.hidden ? "text-neutral-400" : "text-neutral-800"
             }`}
             style={{ paddingLeft: 8 + depth * 14 }}
@@ -102,9 +102,10 @@ export default function LayersPanel({
               aria-label={`${item.locked ? "Unlock" : "Lock"} ${item.name}`}
               title={item.locked ? "Unlock" : "Lock"}
               onClick={() => onToggleLocked(item.id)}
-              className={iconButton}
+              // Like Figma: the lock shows on locked layers, and on hover to lock one.
+              className={`${iconButton} ${item.locked ? "" : "opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
             >
-              {item.locked ? "🔒" : "🔓"}
+              🔒
             </button>
           </li>
         ))}
