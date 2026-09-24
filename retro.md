@@ -98,3 +98,10 @@
 - The owner tested an app window still running the previous front code: hot
   reload did not reach it, although Vite served the new files. The dev app is
   now restarted before every owner test of a front change.
+
+## layers-booleans (2026-09-24)
+- The empty layers panel was found by a failed check in my own E2E; reading
+  the screenshot and the row count (0) before retrying led straight to the
+  cause (shapes tagged after `object:added`).
+- The owner's only remark: no Cmd+Z. Undo was never planned; booleans keep
+  their originals hidden to stay recoverable in the meantime.
