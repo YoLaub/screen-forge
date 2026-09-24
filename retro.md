@@ -87,3 +87,9 @@
   which only gets new node fields after `pnpm bundle`. Until then they silently
   miss `text` (no error): an old server reading a newer file is the risk to
   watch whenever the node model grows.
+
+## styles (2026-09-24)
+- The line's phantom black fill was caught by reading the exported payload in
+  the browser E2E, not by the UI: always inspect what the agent will receive.
+- toNodeRecord had grown one positional parameter per feature; it now takes
+  named extras before adding style.

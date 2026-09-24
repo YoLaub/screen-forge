@@ -24,7 +24,7 @@ Done:
 
 Remaining (the owner does not consider v1 complete without it):
 5. Vector drawing tools (spec module B), in four features, in this order:
-   5.1 shapes and text (done), 5.2 styles (fill, stroke, radius, opacity, gradients),
+   5.1 shapes and text (done), 5.2 styles (done: fill, stroke, radius, opacity, gradients),
    5.3 pen and Bézier curves, 5.4 layers panel and boolean operations
    (Paper.js).
 
