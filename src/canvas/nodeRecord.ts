@@ -1,5 +1,6 @@
 import type { Box } from "./geometry";
 import { type Link, toConnections } from "./links";
+import type { Anchor } from "./penPath";
 import { type NodeStyle, colorsOf } from "./style";
 
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
@@ -27,10 +28,21 @@ export interface SfProps {
   sfInstructions: string;
   /** Outgoing links. Absent on canvases saved before links existed. */
   sfLinks?: Link[];
+  /** Pen paths: their points (in path coordinates) and whether they are closed. */
+  sfAnchors?: Anchor[];
+  sfClosed?: boolean;
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
-export const SF_PROPS: (keyof SfProps)[] = ["sfId", "sfKind", "sfName", "sfInstructions", "sfLinks"];
+export const SF_PROPS: (keyof SfProps)[] = [
+  "sfId",
+  "sfKind",
+  "sfName",
+  "sfInstructions",
+  "sfLinks",
+  "sfAnchors",
+  "sfClosed",
+];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
 const NAME_PREFIX: Record<NodeKind, string> = {
