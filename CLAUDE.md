@@ -11,16 +11,24 @@ annotations) and act on it locally, without copy-pasting screenshots.**
 Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
 file and the spec disagree, this file wins (see the MCP decision below).
 
-## Goals (v1 = proof of concept)
-1. OS-level capture of a window or region onto the canvas (macOS).
-2. Infinite canvas holding capture and drawing nodes with user annotations.
+## Goals (v1)
+Done:
+1. OS-level window capture onto the canvas (macOS).
+2. Infinite canvas holding capture and drawing nodes with user annotations and
+   links.
 3. MCP server over stdio that exposes the nodes (`get_canvas_snapshot`,
-   `get_node_detail`, `get_node_dependencies`), which is enough to run US-1
-   end to end.
+   `get_node_detail`, `get_node_dependencies`): US-1 runs end to end.
 
-Out of scope for v1: OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket transports, the
-live preview sandbox (`update_node_preview`), the one-click client config
-injector, OCR, Windows and Linux.
+Remaining (the owner does not consider v1 complete without them):
+4. Agent feedback on the canvas: `create_node_annotation` and
+   `update_node_preview` (generated code shown next to the drawing).
+5. Vector drawing tools (spec module B): pen and Bézier curves, shapes, text,
+   fills and gradients, layers.
+6. One-click MCP setup for Claude Code / Claude Desktop (US-3, without OAuth).
+
+Out of scope for v1: OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket transports,
+region capture, OCR, Windows and Linux. The v1 milestone (dev → main) and a
+stable local signing identity come once goals 4 to 6 are done.
 
 ## Constraints
 - macOS only in v1. Keep capture code behind an OS boundary so other platforms
