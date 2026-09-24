@@ -110,3 +110,21 @@
 - Every save call site became `commit()` (record + save); one call with a
   slightly different shape (`() => autosave.schedule()`) escaped the automatic
   replacement and was caught by grepping the remaining calls.
+
+## v1 milestone (2026-09-24)
+- Scope grew twice on the owner's call, both for good reasons: "canvas
+  understanding" replaced agent writes as goal 4 (the bridge is first about the
+  agent understanding what to build), and undo joined v1 after the first real
+  use of booleans.
+- What made the difference for the agent, in order: the PNG as a real image
+  block, positions and frames in reading order, then text and CSS-like styles.
+  Each was validated by asking `claude -p` to describe or rebuild the owner's
+  own canvas, not a fixture.
+- Most real bugs came from the OS and the WebView, not from the logic:
+  Screen Recording ownership, macOS desktops, overlay windows, Chrome's
+  full-screen layers, Tauri swallowing drops, flex overflow scrolling. Each was
+  settled by measuring (window dumps, pixel alpha, scrollLeft) before fixing.
+- Process slips worth keeping in mind: an E2E against a stale MCP binary, a
+  dev window still running old front code, a misread downscaled screenshot.
+- Still manual: the ad-hoc signed bundle loses its Screen Recording grant on
+  every rebuild (next step: a stable local signing identity).
