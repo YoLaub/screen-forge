@@ -43,3 +43,18 @@
   and the canvas `getBoundingClientRect()` found the real cause.
 - Opening the inspector shrinks the canvas, so the viewport center moves: a new
   node is placed at the center of the visible area, not of the window.
+
+## capture (2026-09-24)
+- Every capture bug was diagnosed from evidence, not guessed: a standalone xcap
+  dump (only the menu bar visible → missing permission), the saved PNGs' alpha
+  (100 % transparent → an overlay window), and a Swift dump of the window list
+  on the failing desktop (Chrome's tab-strip overlays in front of its window).
+- Screen Recording in dev belongs to the terminal that launched `tauri dev`,
+  and granting it means quitting that terminal: test capture in the packaged
+  app instead.
+- Ad-hoc signed builds get a new identity on each rebuild; macOS keeps showing
+  the old grant as enabled while the new build is denied. After each rebuild:
+  `tccutil reset ScreenCapture dev.screenforge.desktop`, then grant again.
+  A stable local signing identity would remove this step (not done yet).
+- The shortcut's first design (open the picker) failed across desktops and
+  did not match what the owner expected (an instant capture).
