@@ -1,0 +1,33 @@
+[package]
+name = "screenforge"
+version = "0.1.0"
+description = "ScreenForge desktop companion"
+authors = []
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "screenforge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.23.1"
+tauri-plugin-dialog = "2"
+sf-core = { version = "0.1.0", path = "../crates/sf-core" }
+xcap = "0.9.8"
+tauri-plugin-global-shortcut = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Same versions as xcap's, to read window levels it does not expose.
+objc2-core-foundation = "0.3.2"
+objc2-core-graphics = "0.3.2"

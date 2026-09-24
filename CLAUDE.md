@@ -11,36 +11,56 @@ annotations) and act on it locally, without copy-pasting screenshots.**
 Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
 file and the spec disagree, this file wins (see the MCP decision below).
 
-## Goals (v1 = proof of concept)
-1. OS-level capture of a window or region onto the canvas (macOS).
-2. Infinite canvas holding capture and drawing nodes with user annotations.
-3. MCP server over stdio that exposes the nodes (`get_canvas_snapshot`,
-   `get_node_detail`, `get_node_dependencies`), which is enough to run US-1
-   end to end.
+## Goals
+v1 is done (tagged `v0.1.0`, 2026-09-24):
+1. OS-level window capture onto the canvas (macOS): picker and Cmd+Shift+X.
+2. Infinite canvas: frames (screens), shapes, text, styles and gradients, pen
+   and Bézier paths, layers panel, boolean operations, undo and redo.
+3. User annotations and links (trigger, payload type) on nodes.
+4. MCP server over stdio (`get_canvas_snapshot`, `get_node_detail`,
+   `get_node_dependencies`) with canvas image, positions, frames in reading
+   order, text and styles: US-1 runs end to end.
+5. One-click MCP setup for Claude Code and Claude Desktop (US-3, without OAuth).
 
-Out of scope for v1: OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket transports, the
-live preview sandbox (`update_node_preview`), the one-click client config
-injector, OCR, Windows and Linux.
+Next: a stable local signing identity (so Screen Recording survives rebuilds).
+After that, candidates, none decided: the agent writing to the canvas
+(`create_node_annotation`, `update_node_preview`, corrections), region capture,
+OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
 
 ## Constraints
 - macOS only in v1. Keep capture code behind an OS boundary so other platforms
   can be added later.
 - No network listener in v1: MCP runs over stdio only.
-- tldraw needs a paid license for commercial use (otherwise it shows a
-  watermark). Review this before any commercial release.
+- Canvas and UI dependencies must be free for commercial use (MIT or similar).
+  No license-keyed SDKs such as tldraw.
 
 ## Technical decisions
 - Desktop shell: Tauri v2 + Rust.
 - UI: React 19 + Tailwind CSS + Radix UI.
-- Canvas: tldraw SDK. Advanced vector tools (booleans, fine Bézier editing)
-  are built on top of it.
+- Canvas: Fabric.js (infinite pan/zoom and connectors built in-house).
+  Boolean operations will come from Paper.js when the vector studio lands.
+- Capture: `xcap`, macOS only, current desktop only. Button = window picker;
+  Cmd+Shift+X = instant capture of the largest window of the app in front.
+  Only normal windows (kCGWindowLayer 0) are offered.
 - MCP server: Rust, using the official `rmcp` SDK. This deviates from spec §6,
   which named the TypeScript SDK: Rust avoids bundling a Node runtime. The
-  server is a `screenforge mcp` binary that talks to the running app.
-- IPC between the `screenforge mcp` binary and the running app: _à décider_.
-- Canvas persistence format and location: _à décider_.
-- Test runners (Rust / front): _à décider_.
-- External docs (tldraw, rmcp, Tauri v2): use a generic doc tool. Whether a
+  server is a separate `screenforge-mcp` binary (crate `crates/sf-mcp`).
+- Persistence and MCP access go through files. Each project's canvas lives in
+  `<project root>/.screenforge/`: `canvas.json` (Fabric state, read by the app
+  only), and `nodes/<id>/{node.json,export.svg,image.png}` written by the app
+  on every save, plus `canvas.png` (whole-canvas render). `screenforge-mcp`
+  reads `nodes/` and `canvas.png` only and never parses Fabric JSON. It serves
+  its working directory's project, else the project open in ScreenForge
+  (`sf-core::app_state`).
+- `screenforge-mcp` ships next to the app binary (`Contents/MacOS/`), declared as
+  `externalBin` in `src-tauri/tauri.bundle.conf.json` only. The Connect AI panel
+  registers it: Claude Code via `claude mcp add --scope user`, Claude Desktop by
+  merging `claude_desktop_config.json` (backup kept, unparsable file refused).
+- Frames group nodes: a node's parent is the smallest larger frame containing
+  its center, recomputed by the app on every save.
+- `crates/sf-core` is the single owner of the `.screenforge/` layout.
+- Tooling: pnpm, Vitest (front), `cargo test` (Rust).
+- External docs (Fabric, rmcp, Tauri v2): use a generic doc tool. Whether a
   dedicated doc MCP is worth building: _à décider_ (not evaluated yet).
 
 ## Method
@@ -54,11 +74,21 @@ injector, OCR, Windows and Linux.
 ## Key rules
 - A single service layer owns node data. The UI and the MCP server both
   consume it, and neither reads canvas internals directly.
+- Feature cards live in `docs/index/` (one OKF card per feature). Lessons
+  learned go to `retro.md`.
 - MCP payloads follow the node shape in spec §7 (`id`, `type`, `name`,
   `dimensions`, `visual_context`, `connections`, `user_instructions`).
 
 ## Commands
-- dev / test / build: _à décider_ (fill in once the repo is scaffolded).
+- Run the app: `pnpm tauri dev`
+- Front: `pnpm test` · `pnpm typecheck`
+- Rust: `cargo test --workspace`
+- MCP server: `cargo build -p sf-mcp` → `target/debug/screenforge-mcp` (run from
+  the project root; register with `claude mcp add screenforge -- <path>`).
+  Rebuild it before any MCP E2E: `cargo test` does not.
+- Packaged build: `pnpm bundle` (builds and ships `screenforge-mcp`). Test capture there, and after
+  each rebuild run `tccutil reset ScreenCapture dev.screenforge.desktop` (ad-hoc
+  signing changes the app identity, so the old Screen Recording grant is stale).
 
 BRAIN: ~/brain/screen-forge
 

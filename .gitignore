@@ -10,3 +10,11 @@ dist/
 !.vscode/extensions.json
 # Local canvas data of the app's own dev runs
 /.screenforge/
+# Tauri generated capability schemas
+/src-tauri/gen/schemas
+*.local
+*.tsbuildinfo
+# Playwright MCP output
+.playwright-mcp/
+# Sidecar binaries copied at bundle time
+/src-tauri/binaries/

@@ -1,0 +1,13 @@
+[package]
+name = "sf-core"
+version = "0.1.0"
+edition = "2024"
+description = "ScreenForge project-folder format and node model, shared by the app and the MCP server"
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.20"
+
+[dev-dependencies]
+tempfile = "3.27.0"
