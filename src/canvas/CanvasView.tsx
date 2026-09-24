@@ -1,12 +1,20 @@
 import { Canvas, FabricImage, FabricObject, Path, Point, Rect } from "fabric";
 import { useEffect, useRef, useState } from "react";
-import { loadCanvas, saveCanvas, type NodeExportDto } from "../services/backend";
+import {
+  captureWindow,
+  listWindows,
+  loadCanvas,
+  onOpenCapturePicker,
+  saveCanvas,
+  type NodeExportDto,
+} from "../services/backend";
 import { createAutosave } from "./autosave";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
+import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { nextZoom } from "./viewport";
 
@@ -73,12 +81,12 @@ function drawArrows(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
   return arrows;
 }
 
-function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind) {
+function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: string) {
   const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
   const props: SfProps = {
     sfId: newNodeId(kind),
     sfKind: kind,
-    sfName: nextNodeName(kind, names),
+    sfName: name ?? nextNodeName(kind, names),
     sfInstructions: "",
     sfLinks: [],
   };
@@ -94,6 +102,8 @@ export default function CanvasView({ root }: { root: string }) {
   const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
   // Set inside the canvas effect, used by inspector edits.
   const afterEditRef = useRef<() => void>(() => {});
+  const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
+  const [picker, setPicker] = useState<WindowInfo[] | null>(null);
 
   useEffect(() => {
     const container = containerRef.current!;
@@ -213,7 +223,16 @@ export default function CanvasView({ root }: { root: string }) {
       lastPan = null;
     });
 
-    // An image pasted (Cmd+V) or dropped on the canvas becomes a capture node.
+    // A captured, pasted or dropped image becomes a capture node.
+    const addImage = async (dataUrl: string, at: Point, name?: string) => {
+      const image = await FabricImage.fromURL(dataUrl);
+      tagAsNode(canvas, image, "capture", name);
+      // Fabric 7 objects are positioned by their center (originX/Y default to "center").
+      image.set({ left: at.x, top: at.y });
+      canvas.add(image);
+      canvas.setActiveObject(image);
+    };
+    addImageRef.current = (dataUrl, name) => addImage(dataUrl, canvas.getVpCenter(), name);
     const addCapture = async (file: File, at: Point) => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -221,12 +240,7 @@ export default function CanvasView({ root }: { root: string }) {
         reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
       });
-      const image = await FabricImage.fromURL(dataUrl);
-      tagAsNode(canvas, image, "capture");
-      // Fabric 7 objects are positioned by their center (originX/Y default to "center").
-      image.set({ left: at.x, top: at.y });
-      canvas.add(image);
-      canvas.setActiveObject(image);
+      await addImage(dataUrl, at);
     };
     const onPaste = (e: ClipboardEvent) => {
       const file = firstImageFile(e.clipboardData?.files);
@@ -252,8 +266,10 @@ export default function CanvasView({ root }: { root: string }) {
     window.addEventListener("paste", onPaste);
     container.addEventListener("dragover", onDragOver);
     container.addEventListener("drop", onDrop);
+    const unlistenShortcut = onOpenCapturePicker(() => openPickerRef.current());
 
     return () => {
+      unlistenShortcut.then((unlisten) => unlisten());
       resize.disconnect();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -264,6 +280,26 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.dispose();
     };
   }, [root]);
+
+  async function openPicker() {
+    try {
+      setPicker(await listWindows());
+    } catch (error) {
+      setStatus(`Window list failed: ${String(error)}`);
+    }
+  }
+  const openPickerRef = useRef(openPicker);
+  openPickerRef.current = openPicker;
+
+  async function pickWindow(w: WindowInfo) {
+    setPicker(null);
+    try {
+      const png = await captureWindow(w.id);
+      await addImageRef.current(`data:image/png;base64,${png}`, captureName(w));
+    } catch (error) {
+      setStatus(`Capture failed: ${String(error)}`);
+    }
+  }
 
   function onInspectorChange(patch: InspectorPatch) {
     const canvas = fabricRef.current;
@@ -305,7 +341,17 @@ export default function CanvasView({ root }: { root: string }) {
           >
             Rectangle
           </button>
+          <button
+            onClick={openPicker}
+            title="Capture a window (⌘⇧X from any app)"
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+          >
+            Capture window
+          </button>
         </div>
+        {picker && (
+          <WindowPicker windows={picker} onPick={pickWindow} onCancel={() => setPicker(null)} />
+        )}
         <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
         <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
           <canvas ref={canvasElRef} />
