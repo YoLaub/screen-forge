@@ -78,7 +78,11 @@ function exportNode(
   parents: Record<string, string | undefined>,
 ): NodeExportDto {
   const bounds = obj.getBoundingRect();
-  const node = toNodeRecord(obj, bounds, parents[obj.sfId], obj instanceof IText ? obj.text : undefined);
+  const node = toNodeRecord(obj, {
+    bounds,
+    parent: parents[obj.sfId],
+    text: obj instanceof IText ? obj.text : undefined,
+  });
   if (obj.sfKind === "frame") {
     // A frame's image is the whole screen: the frame with everything placed on it.
     return { node, svg: null, png_base64: renderRegion(canvas, bounds) };

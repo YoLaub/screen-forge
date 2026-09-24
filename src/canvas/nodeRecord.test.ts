@@ -75,8 +75,7 @@ describe("toNodeRecord", () => {
         scaleX: 1,
         scaleY: 1,
       },
-      { left: 12.4, top: -3.6, width: 10, height: 10 },
-      "frm_1",
+      { bounds: { left: 12.4, top: -3.6, width: 10, height: 10 }, parent: "frm_1" },
     );
     expect(record.position).toEqual({ x: 12, y: -4 });
     expect(record.parent).toBe("frm_1");
@@ -93,7 +92,23 @@ describe("toNodeRecord", () => {
       scaleX: 1,
       scaleY: 1,
     };
-    expect(toNodeRecord(obj, undefined, undefined, "Connexion").text).toBe("Connexion");
+    expect(toNodeRecord(obj, { text: "Connexion" }).text).toBe("Connexion");
     expect(toNodeRecord(obj)).not.toHaveProperty("text");
+  });
+
+  it("carries the style and lists its colors for the agent", () => {
+    const obj = {
+      sfId: "vec_b",
+      sfKind: "vector_drawing" as const,
+      sfName: "Button",
+      sfInstructions: "",
+      width: 10,
+      height: 10,
+      scaleX: 1,
+      scaleY: 1,
+    };
+    const record = toNodeRecord(obj, { style: { fill: "#3B82F6", stroke: "#1D4ED8", stroke_width: 1, radius: 8 } });
+    expect(record.style).toEqual({ fill: "#3B82F6", stroke: "#1D4ED8", stroke_width: 1, radius: 8 });
+    expect(record.colors_detected).toEqual(["#3B82F6", "#1D4ED8"]);
   });
 });
