@@ -12,6 +12,12 @@ pub struct Node {
     pub kind: NodeKind,
     pub name: String,
     pub dimensions: Dimensions,
+    /// Top-left corner in canvas coordinates. Absent in files saved before layout existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
+    /// Id of the frame that contains this node, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
     #[serde(default)]
     pub colors_detected: Vec<String>,
     #[serde(default)]
@@ -25,12 +31,20 @@ pub struct Node {
 pub enum NodeKind {
     Capture,
     VectorDrawing,
+    /// A named screen: the nodes placed inside it are its children.
+    Frame,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Dimensions {
     pub width: f64,
     pub height: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
 }
 
 /// An outgoing link from the owning node to `target_node`.
@@ -65,6 +79,8 @@ mod tests {
                 width: 240.0,
                 height: 48.0,
             },
+            position: None,
+            parent: None,
             colors_detected: vec!["#3B82F6".into(), "#FFFFFF".into()],
             connections: vec![Connection {
                 target_node: "modal_success".into(),
@@ -116,6 +132,46 @@ mod tests {
         assert_eq!(node.user_instructions, "");
         assert_eq!(node.connections[0].trigger, None);
         assert_eq!(node.connections[0].payload_type, None);
+    }
+
+    #[test]
+    fn frames_carry_position_and_children_point_to_them() {
+        let frame = Node {
+            id: "frm_login".into(),
+            kind: NodeKind::Frame,
+            name: "Login screen".into(),
+            dimensions: Dimensions {
+                width: 800.0,
+                height: 500.0,
+            },
+            position: Some(Position { x: -40.0, y: 10.5 }),
+            parent: None,
+            colors_detected: vec![],
+            connections: vec![],
+            user_instructions: String::new(),
+        };
+        let value = serde_json::to_value(&frame).unwrap();
+        assert_eq!(value["type"], "frame");
+        assert_eq!(value["position"], json!({ "x": -40.0, "y": 10.5 }));
+        assert!(
+            value.get("parent").is_none(),
+            "no parent key when top-level"
+        );
+
+        let mut child = sample();
+        child.parent = Some("frm_login".into());
+        assert_eq!(serde_json::to_value(&child).unwrap()["parent"], "frm_login");
+    }
+
+    #[test]
+    fn node_files_saved_before_layout_existed_still_load() {
+        let node: Node = serde_json::from_value(json!({
+            "id": "cap_1", "type": "capture", "name": "Old",
+            "dimensions": { "width": 1, "height": 1 }
+        }))
+        .unwrap();
+        assert_eq!(node.position, None);
+        assert_eq!(node.parent, None);
     }
 
     #[test]

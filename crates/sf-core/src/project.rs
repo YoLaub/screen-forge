@@ -15,6 +15,8 @@ use crate::store::{
 };
 
 pub const CANVAS_FILE_NAME: &str = "canvas.json";
+/// Render of the whole canvas, for agents that need the overall layout.
+pub const CANVAS_PNG_FILE_NAME: &str = "canvas.png";
 
 /// One node as exported by the canvas: metadata plus its renders.
 #[derive(Debug, Clone, PartialEq)]
@@ -69,6 +71,27 @@ pub fn save_project(
     Ok(())
 }
 
+/// Writes the whole-canvas render, or removes it when the canvas is empty (`None`).
+pub fn write_canvas_png(root: &Path, png: Option<&[u8]>) -> Result<(), StoreError> {
+    let path = project_dir(root).join(CANVAS_PNG_FILE_NAME);
+    match png {
+        Some(png) => {
+            fs::create_dir_all(project_dir(root))?;
+            write_atomic(&path, png)
+        }
+        None => remove_file_if_exists(&path),
+    }
+}
+
+/// The whole-canvas render, or `None` when there is none yet.
+pub fn load_canvas_png(root: &Path) -> Result<Option<Vec<u8>>, StoreError> {
+    match fs::read(project_dir(root).join(CANVAS_PNG_FILE_NAME)) {
+        Ok(png) => Ok(Some(png)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// The saved canvas state, or `None` for a folder that has never been saved.
 pub fn load_canvas(root: &Path) -> Result<Option<String>, StoreError> {
     match fs::read_to_string(project_dir(root).join(CANVAS_FILE_NAME)) {
@@ -96,6 +119,8 @@ mod tests {
                     width: 10.0,
                     height: 10.0,
                 },
+                position: None,
+                parent: None,
                 colors_detected: vec![],
                 connections: vec![],
                 user_instructions: String::new(),
@@ -178,6 +203,16 @@ mod tests {
         );
         assert!(matches!(result, Err(StoreError::InvalidNodeId(_))));
         assert!(!project_dir(dir.path()).exists());
+    }
+
+    #[test]
+    fn canvas_png_is_written_read_and_removed() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(load_canvas_png(dir.path()).unwrap(), None);
+        write_canvas_png(dir.path(), Some(&[1, 2, 3])).unwrap();
+        assert_eq!(load_canvas_png(dir.path()).unwrap(), Some(vec![1, 2, 3]));
+        write_canvas_png(dir.path(), None).unwrap();
+        assert_eq!(load_canvas_png(dir.path()).unwrap(), None);
     }
 
     #[test]

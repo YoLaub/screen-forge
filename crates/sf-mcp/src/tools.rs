@@ -117,6 +117,8 @@ mod tests {
                 width: 240.0,
                 height: 48.0,
             },
+            position: None,
+            parent: None,
             colors_detected: vec!["#3B82F6".into()],
             connections: links
                 .iter()

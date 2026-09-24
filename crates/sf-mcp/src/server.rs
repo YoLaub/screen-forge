@@ -138,6 +138,8 @@ mod tests {
                     width: 320.0,
                     height: 80.0,
                 },
+                position: None,
+                parent: None,
                 colors_detected: vec![],
                 connections: vec![],
                 user_instructions: "Border should be red".into(),
