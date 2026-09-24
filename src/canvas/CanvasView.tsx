@@ -1,4 +1,17 @@
-import { Canvas, FabricImage, FabricObject, FabricText, Path, Point, Rect, type TMat2D } from "fabric";
+import {
+  Canvas,
+  Ellipse,
+  FabricImage,
+  FabricObject,
+  FabricText,
+  IText,
+  Line,
+  Path,
+  Point,
+  Polygon,
+  Rect,
+  type TMat2D,
+} from "fabric";
 import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
@@ -19,6 +32,7 @@ import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
+import { type DrawingTool, SHAPE_NAMES, type Tool, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { nextZoom } from "./viewport";
 
 // Serialize the ScreenForge props with every object in canvas.json.
@@ -64,7 +78,7 @@ function exportNode(
   parents: Record<string, string | undefined>,
 ): NodeExportDto {
   const bounds = obj.getBoundingRect();
-  const node = toNodeRecord(obj, bounds, parents[obj.sfId]);
+  const node = toNodeRecord(obj, bounds, parents[obj.sfId], obj instanceof IText ? obj.text : undefined);
   if (obj.sfKind === "frame") {
     // A frame's image is the whole screen: the frame with everything placed on it.
     return { node, svg: null, png_base64: renderRegion(canvas, bounds) };
@@ -140,6 +154,48 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
   Object.assign(obj, props);
 }
 
+const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
+  { id: "select", label: "Select", key: "V", hint: "Select and move" },
+  { id: "frame", label: "Frame", key: "F", hint: "A named screen: everything placed inside it belongs to it" },
+  { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
+  { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
+  { id: "line", label: "Line", key: "L", hint: "Drag to draw; Shift snaps to 45°" },
+  { id: "polygon", label: "Polygon", key: "P", hint: "Drag to draw" },
+  { id: "text", label: "Text", key: "T", hint: "Click to type" },
+];
+
+const WIREFRAME = { fill: "#e5e7eb", stroke: "#6b7280", strokeWidth: 1, strokeUniform: true };
+const TOP_LEFT = { originX: "left", originY: "top" } as const;
+/** Size of a shape placed with a click instead of a drag. */
+const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
+  frame: { width: 800, height: 500 },
+  rect: { width: 160, height: 100 },
+  ellipse: { width: 120, height: 120 },
+  line: { width: 160, height: 0 },
+  polygon: { width: 120, height: 120 },
+  text: { width: 0, height: 0 },
+};
+
+/** The shape a drag from `start` to `end` draws with `tool` (text is placed on click). */
+function shapeFor(tool: Exclude<DrawingTool, "text">, start: Point, end: Point, shift: boolean): FabricObject {
+  if (tool === "line") {
+    const to = snapLine(start, end, shift);
+    return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
+  }
+  const box = dragBox(start, end, shift);
+  const at = { ...TOP_LEFT, left: box.left, top: box.top };
+  switch (tool) {
+    case "frame":
+      return new Rect({ ...at, width: box.width, height: box.height, fill: "#ffffff", stroke: "#d4d4d4", strokeWidth: 1 });
+    case "rect":
+      return new Rect({ ...WIREFRAME, ...at, width: box.width, height: box.height });
+    case "ellipse":
+      return new Ellipse({ ...WIREFRAME, ...at, rx: box.width / 2, ry: box.height / 2 });
+    case "polygon":
+      return new Polygon(polygonPoints(3, box), { ...WIREFRAME });
+  }
+}
+
 export default function CanvasView({ root }: { root: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
@@ -147,9 +203,13 @@ export default function CanvasView({ root }: { root: string }) {
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<InspectorNode | null>(null);
   const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
-  // Set inside the canvas effect, used by inspector edits.
+  // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
+  const applyToolRef = useRef<(t: Tool) => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
+  const [tool, setTool] = useState<Tool>("select");
+  const toolRef = useRef<Tool>("select");
+  toolRef.current = tool;
   const [picker, setPicker] = useState<{ windows: WindowInfo[]; permissionMissing: boolean } | null>(
     null,
   );
@@ -277,6 +337,9 @@ export default function CanvasView({ root }: { root: string }) {
         canvas.defaultCursor = "grab";
       }
       if (e.target instanceof HTMLSelectElement) return;
+      const picked = toolForKey(e);
+      if (picked) setTool(picked);
+      if (e.key === "Escape") setTool("select");
       if (e.key === "Backspace" || e.key === "Delete") {
         canvas.getActiveObjects().forEach((o) => canvas.remove(o));
         canvas.discardActiveObject();
@@ -291,8 +354,7 @@ export default function CanvasView({ root }: { root: string }) {
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") {
         spaceDown = false;
-        canvas.selection = true;
-        canvas.defaultCursor = "default";
+        applyTool(toolRef.current);
       }
     };
     canvas.on("mouse:down", ({ e }) => {
@@ -306,6 +368,71 @@ export default function CanvasView({ root }: { root: string }) {
     canvas.on("mouse:up", () => {
       lastPan = null;
       frameDrag = null;
+    });
+
+    // Drawing: the active tool draws a shape by dragging; the preview is not a
+    // node (so no save) until the mouse is released.
+    const applyTool = (t: Tool) => {
+      canvas.selection = t === "select";
+      canvas.skipTargetFind = t !== "select";
+      canvas.defaultCursor = t === "select" ? "default" : t === "text" ? "text" : "crosshair";
+    };
+    applyToolRef.current = applyTool;
+    let drawing: { tool: Exclude<DrawingTool, "text">; start: Point; preview: FabricObject } | null = null;
+    const finishShape = (obj: FabricObject, t: DrawingTool) => {
+      const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+      const kind = t === "frame" ? "frame" : "vector_drawing";
+      tagAsNode(canvas, obj, kind, nextNodeName(kind, names, SHAPE_NAMES[t]));
+      obj.setCoords();
+      // Frames sit behind the elements placed on them.
+      if (t === "frame") canvas.sendObjectToBack(obj);
+      canvas.setActiveObject(obj);
+      setTool("select");
+      redrawArrows();
+      autosave.schedule();
+    };
+    canvas.on("mouse:down", ({ e }) => {
+      const t = toolRef.current;
+      if (t === "select" || spaceDown) return;
+      const start = canvas.getScenePoint(e);
+      if (t === "text") {
+        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: "system-ui, sans-serif", fill: "#111827" });
+        canvas.add(text);
+        finishShape(text, "text");
+        text.enterEditing();
+        text.selectAll();
+        return;
+      }
+      const preview = shapeFor(t, start, start, false);
+      canvas.add(preview);
+      drawing = { tool: t, start, preview };
+    });
+    canvas.on("mouse:move", ({ e }) => {
+      if (!drawing) return;
+      canvas.remove(drawing.preview);
+      drawing.preview = shapeFor(drawing.tool, drawing.start, canvas.getScenePoint(e), e.shiftKey);
+      canvas.add(drawing.preview);
+    });
+    canvas.on("mouse:up", ({ e }) => {
+      if (!drawing) return;
+      const { tool: t, start } = drawing;
+      canvas.remove(drawing.preview);
+      let end = canvas.getScenePoint(e);
+      // A click without a drag places a shape of the default size.
+      if (Math.abs(end.x - start.x) < 4 && Math.abs(end.y - start.y) < 4) {
+        const size = DEFAULT_SIZE[t];
+        end = new Point(start.x + size.width, start.y + size.height);
+      }
+      drawing = null;
+      const shape = shapeFor(t, start, end, e.shiftKey);
+      canvas.add(shape);
+      finishShape(shape, t);
+    });
+    // Text edits are node changes; an emptied text is removed.
+    canvas.on("text:changed", () => autosave.schedule());
+    canvas.on("text:editing:exited", ({ target }) => {
+      if (target.text.trim() === "") canvas.remove(target);
+      autosave.schedule();
     });
 
     // A captured, pasted or dropped image becomes a capture node.
@@ -373,6 +500,15 @@ export default function CanvasView({ root }: { root: string }) {
     };
   }, [root]);
 
+  useEffect(() => {
+    applyToolRef.current(tool);
+    const canvas = fabricRef.current;
+    if (canvas && tool !== "select") {
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    }
+  }, [tool]);
+
   async function openPicker() {
     try {
       const granted = await ensureScreenCaptureAccess();
@@ -402,63 +538,25 @@ export default function CanvasView({ root }: { root: string }) {
     afterEditRef.current();
   }
 
-  function addFrame() {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const center = canvas.getVpCenter();
-    const frame = new Rect({
-      left: center.x,
-      top: center.y,
-      width: 800,
-      height: 500,
-      fill: "#ffffff",
-      stroke: "#d4d4d4",
-      strokeWidth: 1,
-    });
-    tagAsNode(canvas, frame, "frame");
-    canvas.add(frame);
-    // Frames sit behind the elements placed on them.
-    canvas.sendObjectToBack(frame);
-    canvas.setActiveObject(frame);
-  }
-
-  function addRectangle() {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    const center = canvas.getVpCenter();
-    const rect = new Rect({
-      left: center.x,
-      top: center.y,
-      width: 160,
-      height: 100,
-      rx: 8,
-      ry: 8,
-      fill: "#3B82F6",
-    });
-    tagAsNode(canvas, rect, "vector_drawing");
-    canvas.add(rect);
-    canvas.setActiveObject(rect);
-  }
-
   return (
     <div className="flex min-h-0 flex-1">
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
       <div className="relative min-w-0 flex-1 overflow-hidden">
         <div className="absolute left-3 top-3 z-10 flex gap-2">
-          <button
-            onClick={addFrame}
-            title="A named screen: everything placed inside it belongs to it."
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
-          >
-            Frame
-          </button>
-          <button
-            onClick={addRectangle}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
-          >
-            Rectangle
-          </button>
+          <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+            {TOOLBAR.map(({ id, label, key, hint }) => (
+              <button
+                key={id}
+                onClick={() => setTool(id)}
+                aria-pressed={tool === id}
+                title={`${hint} (${key})`}
+                className={`px-3 py-1.5 text-sm ${tool === id ? "bg-neutral-900 text-white" : "hover:bg-neutral-50"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={openPicker}
             title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
