@@ -105,3 +105,8 @@
   cause (shapes tagged after `object:added`).
 - The owner's only remark: no Cmd+Z. Undo was never planned; booleans keep
   their originals hidden to stay recoverable in the meantime.
+
+## undo (2026-09-24)
+- Every save call site became `commit()` (record + save); one call with a
+  slightly different shape (`() => autosave.schedule()`) escaped the automatic
+  replacement and was caught by grepping the remaining calls.

@@ -26,6 +26,7 @@ import {
   type NodeExportDto,
 } from "../services/backend";
 import { createAutosave } from "./autosave";
+import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
@@ -332,6 +333,19 @@ export default function CanvasView({ root }: { root: string }) {
       AUTOSAVE_DELAY_MS,
       (error) => setStatus(`Save failed: ${String(error)}`),
     );
+    // Undo history: a snapshot of the canvas after each change, grouped over
+    // 300 ms so that a whole drag is one step.
+    const history = createHistory<string>(100);
+    const snapshot = () => JSON.stringify(canvas.toObject());
+    const recorder = createAutosave(async () => history.record(snapshot()), 300);
+    let restoring = false;
+    /** A user change: recorded for undo and saved. */
+    const commit = () => {
+      if (restoring) return;
+      recorder.schedule();
+      autosave.schedule();
+    };
+
     let overlays: FabricObject[] = [];
     const redrawArrows = () => {
       overlays = drawOverlays(canvas, overlays);
@@ -354,10 +368,10 @@ export default function CanvasView({ root }: { root: string }) {
       );
     };
     const onChange = ({ target }: { target: SfObject }) => {
-      if (loading || !isNode(target)) return;
+      if (loading || restoring || !isNode(target)) return;
       redrawArrows();
       refreshLayers();
-      autosave.schedule();
+      commit();
     };
     canvas.on("object:added", onChange);
     canvas.on("object:modified", onChange);
@@ -409,6 +423,24 @@ export default function CanvasView({ root }: { root: string }) {
       syncSelection();
       redrawArrows();
       refreshLayers();
+      commit();
+    };
+
+    const restore = async (state: string | null) => {
+      if (!state) return;
+      restoring = true;
+      canvas.discardActiveObject();
+      await canvas.loadFromJSON(state);
+      overlays = [];
+      canvas
+        .getObjects()
+        .filter(isNode)
+        .forEach((n) => n.sfLocked && n.set(lockProps(true)));
+      redrawArrows();
+      refreshLayers();
+      syncSelection();
+      restoring = false;
+      // Save the restored state so that the agent sees it too.
       autosave.schedule();
     };
 
@@ -496,6 +528,7 @@ export default function CanvasView({ root }: { root: string }) {
           .forEach((n) => n.sfLocked && n.set(lockProps(true)));
         redrawArrows();
         refreshLayers();
+        history.record(snapshot());
       })
       .catch((error) => {
         // Saving now would mirror an empty canvas and delete every node on disk.
@@ -528,6 +561,11 @@ export default function CanvasView({ root }: { root: string }) {
       }
       if (e.target instanceof HTMLSelectElement) return;
       if (onPenKey(e)) return;
+      if (e.metaKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        restore(e.shiftKey ? history.redo() : history.undo());
+        return;
+      }
       if (e.metaKey && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         restack(e.key === "]" ? 1 : -1);
@@ -549,7 +587,7 @@ export default function CanvasView({ root }: { root: string }) {
         const ids = new Set(remaining.map((n) => n.sfId));
         remaining.forEach((n) => (n.sfLinks = pruneLinks(n.sfLinks ?? [], ids)));
         redrawArrows();
-        autosave.schedule();
+        commit();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -593,7 +631,7 @@ export default function CanvasView({ root }: { root: string }) {
       // The shape was added before it became a node, so onChange skipped it.
       redrawArrows();
       refreshLayers();
-      autosave.schedule();
+      commit();
     };
     canvas.on("mouse:down", ({ e }) => {
       const t = toolRef.current;
@@ -749,7 +787,7 @@ export default function CanvasView({ root }: { root: string }) {
       applyTool(toolRef.current);
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
-      autosave.schedule();
+      commit();
     };
     canvas.on("mouse:dblclick", ({ target }) => {
       const obj = target as SfObject | undefined;
@@ -779,10 +817,10 @@ export default function CanvasView({ root }: { root: string }) {
     });
 
     // Text edits are node changes; an emptied text is removed.
-    canvas.on("text:changed", () => autosave.schedule());
+    canvas.on("text:changed", () => commit());
     canvas.on("text:editing:exited", ({ target }) => {
       if (target.text.trim() === "") canvas.remove(target);
-      autosave.schedule();
+      commit();
     });
 
     // A captured, pasted or dropped image becomes a capture node.
