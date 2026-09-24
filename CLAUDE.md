@@ -11,26 +11,21 @@ annotations) and act on it locally, without copy-pasting screenshots.**
 Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
 file and the spec disagree, this file wins (see the MCP decision below).
 
-## Goals (v1)
-Done:
-1. OS-level window capture onto the canvas (macOS).
-2. Infinite canvas holding capture and drawing nodes with user annotations and
-   links.
-3. MCP server over stdio that exposes the nodes (`get_canvas_snapshot`,
-   `get_node_detail`, `get_node_dependencies`): US-1 runs end to end.
-4. Agent understanding of the canvas: canvas image, node positions, frames
-   (screens) with their elements in reading order, screen images.
-6. One-click MCP setup for Claude Code / Claude Desktop (US-3, without OAuth).
+## Goals
+v1 is done (tagged `v0.1.0`, 2026-09-24):
+1. OS-level window capture onto the canvas (macOS): picker and Cmd+Shift+X.
+2. Infinite canvas: frames (screens), shapes, text, styles and gradients, pen
+   and Bézier paths, layers panel, boolean operations, undo and redo.
+3. User annotations and links (trigger, payload type) on nodes.
+4. MCP server over stdio (`get_canvas_snapshot`, `get_node_detail`,
+   `get_node_dependencies`) with canvas image, positions, frames in reading
+   order, text and styles: US-1 runs end to end.
+5. One-click MCP setup for Claude Code and Claude Desktop (US-3, without OAuth).
 
-5. Vector drawing tools (spec module B), in four features, in this order:
-   5.1 shapes and text (done), 5.2 styles (done: fill, stroke, radius, opacity, gradients),
-   5.3 pen and Bézier curves (done), 5.4 layers panel and boolean operations
-   (Paper.js) (done), 5.5 undo and redo (Cmd+Z / Cmd+Shift+Z) (done).
-
-Out of scope for v1: the agent writing to the canvas (`create_node_annotation`,
-`update_node_preview`, corrections), OAuth/PKCE, Bearer/PAT, SSE/HTTP/WebSocket
-transports, region capture, OCR, Windows and Linux. The v1 milestone (dev → main) and a
-stable local signing identity come once goal 5 is done.
+Next: a stable local signing identity (so Screen Recording survives rebuilds).
+After that, candidates, none decided: the agent writing to the canvas
+(`create_node_annotation`, `update_node_preview`, corrections), region capture,
+OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
 
 ## Constraints
 - macOS only in v1. Keep capture code behind an OS boundary so other platforms
