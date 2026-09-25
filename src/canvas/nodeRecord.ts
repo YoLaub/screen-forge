@@ -33,6 +33,8 @@ export interface SfProps {
   sfClosed?: boolean;
   /** Locked in the layers panel: not selectable or movable on the canvas. */
   sfLocked?: boolean;
+  /** Stroke-only shapes drawn as a path (no fill, not combinable). */
+  sfShape?: "arrow" | "cross";
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
@@ -45,6 +47,7 @@ export const SF_PROPS: (keyof SfProps)[] = [
   "sfAnchors",
   "sfClosed",
   "sfLocked",
+  "sfShape",
 ];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };

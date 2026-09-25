@@ -41,7 +41,7 @@ import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
-import { type DrawingTool, SHAPE_NAMES, type Tool, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { type DrawingTool, SHAPE_NAMES, type Tool, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { nextZoom } from "./viewport";
 
 // Serialize the ScreenForge props with every object in canvas.json.
@@ -65,7 +65,7 @@ function isShown(obj: FabricObject): boolean {
 
 /** Shapes a boolean operation can combine (not text, lines, images or frames). */
 function isBooleanShape(obj: FabricObject & SfProps): boolean {
-  return obj.sfKind === "vector_drawing" && !(obj instanceof IText) && !(obj instanceof Line);
+  return obj.sfKind === "vector_drawing" && !(obj instanceof IText) && !(obj instanceof Line) && !obj.sfShape;
 }
 
 const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
@@ -128,7 +128,7 @@ function exportNode(
 /** Style properties that apply to `obj`; undefined for captures (bitmaps). */
 function appliesOf(obj: FabricObject & SfProps): StyleApplies | undefined {
   if (obj.sfKind === "capture") return undefined;
-  const openPath = !!obj.sfAnchors && !obj.sfClosed;
+  const openPath = (!!obj.sfAnchors && !obj.sfClosed) || !!obj.sfShape;
   return { fill: !(obj instanceof Line) && !openPath, radius: obj instanceof Rect, text: obj instanceof IText };
 }
 
@@ -207,6 +207,8 @@ const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
   { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
   { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
   { id: "line", label: "Line", key: "L", hint: "Drag to draw; Shift snaps to 45°" },
+  { id: "arrow", label: "Arrow", key: "A", hint: "Drag from tail to tip; Shift snaps to 45°" },
+  { id: "cross", label: "Cross", key: "X", hint: "Drag to draw; Shift keeps it square" },
   { id: "polygon", label: "Polygon", key: "no key", hint: "Drag to draw" },
   { id: "pen", label: "Pen", key: "P", hint: "Click for corners, drag for curves; click the first point to close, Enter to finish; double-click a path to edit it" },
   { id: "text", label: "Text", key: "T", hint: "Click to type" },
@@ -220,6 +222,8 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
   rect: { width: 160, height: 100 },
   ellipse: { width: 120, height: 120 },
   line: { width: 160, height: 0 },
+  arrow: { width: 160, height: 0 },
+  cross: { width: 40, height: 40 },
   polygon: { width: 120, height: 120 },
   pen: { width: 0, height: 0 },
   text: { width: 0, height: 0 },
@@ -229,6 +233,7 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
 type ShapeTool = Exclude<DrawingTool, "text" | "pen">;
 
 const PEN_STROKE = { fill: "", stroke: "#111827", strokeWidth: 2, strokeUniform: true };
+const ARROW_HEAD = 12;
 const DISPLAY_ONLY = { selectable: false, evented: false, excludeFromExport: true };
 
 /** A pen path through `anchors`; a closed one gets the wireframe fill. */
@@ -262,6 +267,10 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
     const to = snapLine(start, end, shift);
     return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
   }
+  if (tool === "arrow") {
+    const path = new Path(arrowPath(start, snapLine(start, end, shift), ARROW_HEAD), { ...PEN_STROKE, strokeLineJoin: "round" });
+    return Object.assign(path, { sfShape: "arrow" });
+  }
   const box = dragBox(start, end, shift);
   const at = { ...TOP_LEFT, left: box.left, top: box.top };
   switch (tool) {
@@ -273,6 +282,8 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
       return new Ellipse({ ...WIREFRAME, ...at, rx: box.width / 2, ry: box.height / 2 });
     case "polygon":
       return new Polygon(polygonPoints(3, box), { ...WIREFRAME });
+    case "cross":
+      return Object.assign(new Path(crossPath(box), { ...PEN_STROKE, stroke: "#dc2626", strokeLineCap: "round" }), { sfShape: "cross" });
   }
 }
 
