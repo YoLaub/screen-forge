@@ -33,7 +33,7 @@ import { duplicateProps } from "./duplicate";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
-import { type Box, arrowBetween, arrowHead } from "./geometry";
+import { type Box, type Pt, arrowBetween, arrowHead } from "./geometry";
 import { firstImageFile } from "./imageFile";
 import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
@@ -46,7 +46,7 @@ import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
-import { type DrawingTool, SHAPE_NAMES, type Tool, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { nextZoom } from "./viewport";
 
@@ -263,7 +263,35 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
 type ShapeTool = Exclude<DrawingTool, "text" | "pen">;
 
 const PEN_STROKE = { fill: "", stroke: "#111827", strokeWidth: 2, strokeUniform: true };
-const ARROW_HEAD = 12;
+const ROUND_ENDS = { strokeLineJoin: "round", strokeLineCap: "round" } as const;
+
+/** An arrow node's path; its head is sized from the stroke width. */
+function arrowFrom(start: Pt, end: Pt, style: { fill: string; stroke: string; strokeWidth: number; strokeUniform: boolean; opacity?: number }): Path {
+  const path = new Path(arrowPath(start, end, arrowHeadSize(style.strokeWidth)), { ...style, ...ROUND_ENDS });
+  return Object.assign(path, { sfShape: "arrow" as const });
+}
+
+/**
+ * The same arrow redrawn in scene coordinates, so its head follows a new stroke
+ * width. Like a path edit, this resets its scale and rotation.
+ */
+function redrawArrow(canvas: Canvas, old: Path & SfProps): Path & SfProps {
+  const matrix = old.calcTransformMatrix();
+  const toScene = (cmd: (string | number)[]) =>
+    new Point((cmd[1] as number) - old.pathOffset.x, (cmd[2] as number) - old.pathOffset.y).transform(matrix);
+  const [start, end] = [toScene(old.path[0]), toScene(old.path[1])];
+  const next = arrowFrom(start, end, {
+    fill: "",
+    stroke: old.stroke as string,
+    strokeWidth: old.strokeWidth,
+    strokeUniform: true,
+    opacity: old.opacity,
+  }) as Path & SfProps;
+  for (const key of SF_PROPS) (next as unknown as Record<string, unknown>)[key] = old[key];
+  canvas.insertAt(canvas.getObjects().indexOf(old), next);
+  canvas.remove(old);
+  return next;
+}
 const DISPLAY_ONLY = { selectable: false, evented: false, excludeFromExport: true };
 
 /** A pen path through `anchors`; a closed one gets the wireframe fill. */
@@ -298,8 +326,7 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
     return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
   }
   if (tool === "arrow") {
-    const path = new Path(arrowPath(start, snapLine(start, end, shift), ARROW_HEAD), { ...PEN_STROKE, strokeLineJoin: "round" });
-    return Object.assign(path, { sfShape: "arrow" });
+    return arrowFrom(start, snapLine(start, end, shift), PEN_STROKE);
   }
   const box = dragBox(start, end, shift);
   const at = { ...TOP_LEFT, left: box.left, top: box.top };
@@ -1009,8 +1036,10 @@ export default function CanvasView({ root }: { root: string }) {
     const applies = appliesOf(obj);
     if (patch.style !== undefined && applies) {
       const { fill, ...props } = toFabricProps(patch.style, applies);
+      const widthChanged = props.strokeWidth !== undefined && props.strokeWidth !== obj.strokeWidth;
       obj.set({ ...props, fill: typeof fill === "string" ? fill : new Gradient(fill) });
       obj.setCoords();
+      if (obj.sfShape === "arrow" && widthChanged) canvas!.setActiveObject(redrawArrow(canvas!, obj as Path & SfProps));
       canvas!.requestRenderAll();
     }
     afterEditRef.current();

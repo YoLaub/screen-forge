@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 
 const key = (k: string, mods: Partial<KeyboardEvent> = {}) =>
   ({ key: k, metaKey: false, ctrlKey: false, altKey: false, ...mods }) as KeyboardEvent;
@@ -74,5 +74,12 @@ describe("arrowPath", () => {
 describe("crossPath", () => {
   it("joins opposite corners of the box", () => {
     expect(crossPath({ left: 10, top: 20, width: 30, height: 40 })).toBe("M 10 20 L 40 60 M 40 20 L 10 60");
+  });
+});
+
+describe("arrowHeadSize", () => {
+  it("grows with the stroke so a thick arrow keeps a visible head", () => {
+    expect(arrowHeadSize(2)).toBe(16);
+    expect(arrowHeadSize(20)).toBe(70);
   });
 });
