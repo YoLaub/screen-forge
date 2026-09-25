@@ -134,5 +134,5 @@
   next rebuild triggered a keychain prompt: codesign needs the login keychain
   password to reach the private key, and the owner does not know it (it can
   differ from the macOS session password). The owner declined a dedicated
-  signing keychain; signing stays ad hoc and the unused certificate was left in
-  the login keychain.
+  signing keychain; signing stays ad hoc. The certificate and its trust setting
+  were then removed from the login keychain (no keychain password needed).
