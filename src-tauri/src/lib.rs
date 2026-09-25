@@ -40,6 +40,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             project::save_canvas,
             project::load_canvas,
+            project::export_png,
             project::get_last_project,
             project::set_last_project,
             capture::list_windows,

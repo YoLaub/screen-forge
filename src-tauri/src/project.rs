@@ -1,6 +1,6 @@
 //! Tauri commands for opening and saving a project. Storage logic lives in sf-core.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use serde::Deserialize;
@@ -46,6 +46,17 @@ pub fn save_canvas(
     let canvas_png = decode_png(canvas_png_base64, "the canvas")?;
     project::save_project(&root, &canvas_json, &exports).map_err(|e| e.to_string())?;
     project::write_canvas_png(&root, canvas_png.as_deref()).map_err(|e| e.to_string())
+}
+
+fn write_png(path: &Path, png_base64: &str) -> Result<(), String> {
+    let png = decode_png(Some(png_base64.to_owned()), "the export")?.unwrap_or_default();
+    std::fs::write(path, png).map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
+/// Writes a PNG exported by the user (canvas, frame or node) to the path they chose.
+#[tauri::command]
+pub fn export_png(path: PathBuf, png_base64: String) -> Result<(), String> {
+    write_png(&path, &png_base64)
 }
 
 #[tauri::command]
@@ -103,6 +114,23 @@ mod tests {
     #[test]
     fn rejects_invalid_base64() {
         assert!(to_export(dto(Some("not base64!"))).is_err());
+    }
+
+    #[test]
+    fn writes_exported_png_to_the_chosen_path() {
+        let dir = std::env::temp_dir().join(format!("sf-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("frame.png");
+        write_png(&path, "AQID").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), vec![1, 2, 3]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn export_rejects_invalid_base64_without_writing() {
+        let path = std::env::temp_dir().join(format!("sf-export-bad-{}.png", std::process::id()));
+        assert!(write_png(&path, "not base64!").is_err());
+        assert!(!path.exists());
     }
 
     #[test]

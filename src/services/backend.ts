@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AgentClient, AgentStatus } from "../AgentSetup";
 import type { NodeRecord } from "../canvas/nodeRecord";
 import type { WindowInfo } from "../canvas/WindowPicker";
@@ -23,6 +23,15 @@ export function setLastProject(root: string): Promise<void> {
 export async function pickFolder(): Promise<string | null> {
   const picked = await open({ directory: true, multiple: false, title: "Open a project folder" });
   return typeof picked === "string" ? picked : null;
+}
+
+/** Path chosen in the "Save as" dialog for a PNG export, null when cancelled. */
+export function pickPngPath(fileName: string): Promise<string | null> {
+  return save({ defaultPath: fileName, filters: [{ name: "PNG image", extensions: ["png"] }], title: "Export as PNG" });
+}
+
+export function exportPng(path: string, pngBase64: string): Promise<void> {
+  return invoke("export_png", { path, pngBase64 });
 }
 
 export function loadCanvas(root: string): Promise<string | null> {
