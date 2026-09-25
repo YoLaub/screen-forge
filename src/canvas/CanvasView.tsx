@@ -19,15 +19,18 @@ import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
   ensureScreenCaptureAccess,
+  exportPng,
   listWindows,
   loadCanvas,
   onShortcutCapture,
   openScreenCaptureSettings,
+  pickPngPath,
   saveCanvas,
   type NodeExportDto,
 } from "../services/backend";
 import { createAutosave } from "./autosave";
 import { duplicateProps } from "./duplicate";
+import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, arrowBetween, arrowHead } from "./geometry";
@@ -56,6 +59,8 @@ const AUTOSAVE_DELAY_MS = 500;
 /** Longest side of the whole-canvas and frame renders sent to the agent. */
 const RENDER_MAX_SIDE = 2000;
 const CANVAS_RENDER_MARGIN = 40;
+/** User exports render at 2x (sharp on Retina), down to this longest side. */
+const EXPORT_MAX_SIDE = 8000;
 /** How far a duplicate lands from its original, right and down. */
 const DUPLICATE_OFFSET = 20;
 
@@ -81,7 +86,7 @@ const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
 ];
 
 /** PNG of a scene region, independent of the current pan and zoom. */
-function renderRegion(canvas: Canvas, box: Box): string {
+function renderRegion(canvas: Canvas, box: Box, multiplier = renderScale(box, RENDER_MAX_SIDE)): string {
   const viewport = canvas.viewportTransform.slice() as TMat2D;
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
   try {
@@ -91,12 +96,32 @@ function renderRegion(canvas: Canvas, box: Box): string {
       top: box.top,
       width: box.width,
       height: box.height,
-      multiplier: renderScale(box, RENDER_MAX_SIDE),
+      multiplier,
     });
     return dataUrlToBase64(png);
   } finally {
     canvas.setViewportTransform(viewport);
   }
+}
+
+function exportScale(box: Box): number {
+  return 2 * renderScale(box, EXPORT_MAX_SIDE / 2);
+}
+
+/** PNG the Export button saves for `target`, or null when there is nothing to draw. */
+function renderExport(canvas: Canvas, target: ExportTarget, picked: (FabricObject & SfProps)[]): string | null {
+  if (target.scope === "node") {
+    const [obj] = picked;
+    // Captures keep their native resolution, like in the agent export.
+    const multiplier = obj.sfKind === "capture" ? 1 / (obj.scaleX || 1) : exportScale(obj.getBoundingRect());
+    return dataUrlToBase64(obj.toDataURL({ format: "png", multiplier }));
+  }
+  const boxes =
+    target.scope === "canvas"
+      ? canvas.getObjects().filter(isNode).filter(isShown).map((n) => n.getBoundingRect())
+      : picked.map((n) => n.getBoundingRect());
+  const box = unionBox(boxes, target.scope === "canvas" ? CANVAS_RENDER_MARGIN : 0);
+  return box && renderRegion(canvas, box, exportScale(box));
 }
 
 function layoutOf(nodes: (FabricObject & SfProps)[]) {
@@ -306,6 +331,9 @@ export default function CanvasView({ root }: { root: string }) {
   const [tool, setTool] = useState<Tool>("select");
   const [layers, setLayers] = useState<LayerRow[]>([]);
   const [booleanCount, setBooleanCount] = useState(0);
+  const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
+  const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
+  const exportRef = useRef<() => Promise<void>>(async () => {});
   const layerOpsRef = useRef<{
     select: (id: string) => void;
     rename: (id: string, name: string) => void;
@@ -423,6 +451,7 @@ export default function CanvasView({ root }: { root: string }) {
       const active = canvas.getActiveObjects() as SfObject[];
       const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
       setBooleanCount(active.filter(isNode).filter(isBooleanShape).length);
+      setExportTo(exportTarget(active.filter(isNode).map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName));
       setSelected(node ? toInspectorNode(node) : null);
       setOthers(
         canvas
@@ -472,6 +501,20 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.moveObjectTo(obj, canvas.getObjects().indexOf(neighbour));
       afterEditRef.current();
     };
+    exportRef.current = async () => {
+      const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+      const target = exportTarget(picked.map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName);
+      const png = renderExport(canvas, target, picked);
+      if (!png) {
+        setStatus("Nothing to export");
+        return;
+      }
+      const path = await pickPngPath(target.fileName);
+      if (!path) return;
+      await exportPng(path, png);
+      setStatus(`Exported ${path.split("/").pop()}`);
+    };
+
     // Copies go right above their originals and become the selection.
     const duplicate = async () => {
       const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
@@ -1008,6 +1051,13 @@ export default function CanvasView({ root }: { root: string }) {
             className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
           >
             Capture window
+          </button>
+          <button
+            onClick={() => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`))}
+            title="Save a PNG of the selected frame or elements, or of the whole canvas when nothing is selected"
+            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+          >
+            {exportTo.label}
           </button>
           {booleanCount >= 2 && (
             <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
