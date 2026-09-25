@@ -44,6 +44,7 @@ import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeIn
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { type DrawingTool, SHAPE_NAMES, type Tool, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { TEXT_FONT, withTextFont } from "./textFont";
 import { nextZoom } from "./viewport";
 
 // Serialize the ScreenForge props with every object in canvas.json.
@@ -169,7 +170,7 @@ function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] 
       originX: "left",
       originY: "bottom",
       fontSize: 14,
-      fontFamily: "system-ui, sans-serif",
+      fontFamily: TEXT_FONT,
       fill: "#737373",
     });
     canvas.add(label);
@@ -555,7 +556,7 @@ export default function CanvasView({ root }: { root: string }) {
 
     loadCanvas(root)
       .then(async (json) => {
-        if (json) await canvas.loadFromJSON(json);
+        if (json) await canvas.loadFromJSON(withTextFont(json));
         canvas
           .getObjects()
           .filter(isNode)
@@ -677,7 +678,7 @@ export default function CanvasView({ root }: { root: string }) {
       if (t === "select" || t === "pen" || spaceDown) return;
       const start = canvas.getScenePoint(e);
       if (t === "text") {
-        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: "system-ui, sans-serif", fill: "#111827" });
+        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: TEXT_FONT, fill: "#111827" });
         canvas.add(text);
         finishShape(text, "text");
         text.enterEditing();
