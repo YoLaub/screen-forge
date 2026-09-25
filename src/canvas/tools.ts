@@ -82,3 +82,8 @@ export function crossPath(box: Box): string {
   const bottom = box.top + box.height;
   return `M ${box.left} ${box.top} L ${right} ${bottom} M ${right} ${box.top} L ${box.left} ${bottom}`;
 }
+
+/** Barb length of an arrow drawn with `strokeWidth`: proportional, so a thick stroke does not swallow the head. */
+export function arrowHeadSize(strokeWidth: number): number {
+  return 10 + 3 * strokeWidth;
+}
