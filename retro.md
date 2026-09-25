@@ -136,3 +136,14 @@
   differ from the macOS session password). The owner declined a dedicated
   signing keychain; signing stays ad hoc. The certificate and its trust setting
   were then removed from the login keychain (no keychain password needed).
+
+## text-truncation (2026-09-26)
+- Long texts were cut at the end on the canvas and in exports. Cause: Fabric
+  measures glyph widths at `CACHE_FONT_SIZE` (400 px) and scales them down,
+  but `system-ui` (SF Pro) uses optical sizing and draws tighter at 400 px:
+  boxes came out 3 to 6 % too narrow. Proven by `measureText` at 20 px vs
+  400 px / 20. Fix: Helvetica Neue for texts and frame labels, and saved
+  `system-ui` texts are moved to it on load. Avoid variable optical-size fonts
+  with Fabric.
+- The owner's canvas was read through `screenforge-mcp` to see the bug
+  (node PNG vs full text) before touching code.
