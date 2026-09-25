@@ -1,4 +1,5 @@
 import {
+  ActiveSelection,
   Canvas,
   Ellipse,
   FabricImage,
@@ -26,6 +27,7 @@ import {
   type NodeExportDto,
 } from "../services/backend";
 import { createAutosave } from "./autosave";
+import { duplicateProps } from "./duplicate";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, arrowBetween, arrowHead } from "./geometry";
@@ -53,6 +55,8 @@ const AUTOSAVE_DELAY_MS = 500;
 /** Longest side of the whole-canvas and frame renders sent to the agent. */
 const RENDER_MAX_SIDE = 2000;
 const CANVAS_RENDER_MARGIN = 40;
+/** How far a duplicate lands from its original, right and down. */
+const DUPLICATE_OFFSET = 20;
 
 function isNode(obj: SfObject): obj is FabricObject & SfProps {
   return typeof obj.sfId === "string";
@@ -202,7 +206,7 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
 }
 
 const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
-  { id: "select", label: "Select", key: "V", hint: "Select and move" },
+  { id: "select", label: "Select", key: "V", hint: "Select and move; ⌘D duplicates the selection" },
   { id: "frame", label: "Frame", key: "F", hint: "A named screen: everything placed inside it belongs to it" },
   { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
   { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
@@ -467,6 +471,25 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.moveObjectTo(obj, canvas.getObjects().indexOf(neighbour));
       afterEditRef.current();
     };
+    // Copies go right above their originals and become the selection.
+    const duplicate = async () => {
+      const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+      if (picked.length === 0) return;
+      // Out of the selection group, objects carry their absolute placement.
+      canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => picked.includes(o as FabricObject & SfProps)) as (FabricObject & SfProps)[];
+      const props = duplicateProps(ordered, newNodeId);
+      const copies = await Promise.all(ordered.map((o) => o.clone()));
+      copies.forEach((copy, i) => {
+        Object.assign(copy, props[i]);
+        copy.set({ left: copy.left + DUPLICATE_OFFSET, top: copy.top + DUPLICATE_OFFSET });
+        copy.setCoords();
+        canvas.insertAt(canvas.getObjects().indexOf(ordered[i]) + 1, copy);
+      });
+      canvas.setActiveObject(copies.length === 1 ? copies[0] : new ActiveSelection(copies, { canvas }));
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
     layerOpsRef.current = {
       select: (id) => {
         const obj = nodeById(id);
@@ -580,6 +603,11 @@ export default function CanvasView({ root }: { root: string }) {
       if (e.metaKey && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         restack(e.key === "]" ? 1 : -1);
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        if (!edit) duplicate().catch((error) => setStatus(`Duplicate failed: ${String(error)}`));
         return;
       }
       if (edit) {
