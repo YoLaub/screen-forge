@@ -2,7 +2,7 @@
 id: okf-016
 feature: export-png
 branch: feature/export-png
-status: in-progress
+status: done
 files:
   - src/canvas/exportImage.ts (what to export, default file name)
   - src/canvas/CanvasView.tsx (Export button, rendering)
@@ -19,5 +19,5 @@ decisions:
 
 **What**: export a PNG of the canvas, a frame or an element. Verified in the
 browser E2E (stubbed dialog and command): labels follow the selection, each
-scope renders the expected image at 2x. Not yet verified: the real macOS Save
-dialog in the Tauri app.
+scope renders the expected image at 2x. Verified by the owner in the dev app: real macOS Save
+dialog and file written.
