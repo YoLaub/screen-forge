@@ -1,6 +1,6 @@
-import type { Box, Pt } from "./geometry";
+import { type Box, type Pt, arrowHead } from "./geometry";
 
-export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "polygon" | "pen" | "text";
+export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "arrow" | "cross" | "polygon" | "pen" | "text";
 export type DrawingTool = Exclude<Tool, "select">;
 
 const TOOL_KEYS: Record<string, Tool> = {
@@ -9,6 +9,8 @@ const TOOL_KEYS: Record<string, Tool> = {
   r: "rect",
   o: "ellipse",
   l: "line",
+  a: "arrow",
+  x: "cross",
   p: "pen",
   t: "text",
 };
@@ -19,6 +21,8 @@ export const SHAPE_NAMES: Record<DrawingTool, string> = {
   rect: "Rectangle",
   ellipse: "Ellipse",
   line: "Line",
+  arrow: "Arrow",
+  cross: "Cross",
   polygon: "Polygon",
   pen: "Path",
   text: "Text",
@@ -64,4 +68,17 @@ export function polygonPoints(sides: number, box: Box): Pt[] {
     const angle = -Math.PI / 2 + (2 * Math.PI * i) / sides;
     return { x: cx + (box.width / 2) * Math.cos(angle), y: cy + (box.height / 2) * Math.sin(angle) };
   });
+}
+
+/** SVG path of an arrow from `start` to `end`: the shaft, then a barb, the tip and the other barb. */
+export function arrowPath(start: Pt, end: Pt, headSize: number): string {
+  const [b1, b2] = arrowHead(start, end, headSize);
+  return `M ${start.x} ${start.y} L ${end.x} ${end.y} M ${b1.x} ${b1.y} L ${end.x} ${end.y} L ${b2.x} ${b2.y}`;
+}
+
+/** SVG path of an X joining the opposite corners of `box`. */
+export function crossPath(box: Box): string {
+  const right = box.left + box.width;
+  const bottom = box.top + box.height;
+  return `M ${box.left} ${box.top} L ${right} ${bottom} M ${right} ${box.top} L ${box.left} ${bottom}`;
 }
