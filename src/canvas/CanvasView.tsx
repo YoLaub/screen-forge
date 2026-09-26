@@ -1197,7 +1197,8 @@ export default function CanvasView({ root }: { root: string }) {
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
       <div className="relative min-w-0 flex-1 overflow-hidden">
-        <div className="absolute left-3 top-3 z-10 flex gap-2">
+        {/* Wraps instead of sliding under the inspector when the canvas is narrow. */}
+        <div className="pointer-events-none absolute left-3 right-3 top-3 z-10 flex flex-wrap items-start gap-2 [&>*]:pointer-events-auto">
           <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
             {TOOLBAR.map(({ id, label, key, hint }) => (
               <button
@@ -1205,7 +1206,7 @@ export default function CanvasView({ root }: { root: string }) {
                 onClick={() => setTool(id)}
                 aria-pressed={tool === id}
                 title={`${hint} (${key})`}
-                className={`px-3 py-1.5 text-sm ${tool === id ? "bg-neutral-900 text-white" : "hover:bg-neutral-50"}`}
+                className={`whitespace-nowrap px-3 py-1.5 text-sm ${tool === id ? "bg-neutral-900 text-white" : "hover:bg-neutral-50"}`}
               >
                 {label}
               </button>
@@ -1229,14 +1230,14 @@ export default function CanvasView({ root }: { root: string }) {
           <button
             onClick={openPicker}
             title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+            className="whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
           >
             Capture window
           </button>
           <button
             onClick={() => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`))}
             title="Save a PNG of the selected frame or elements, or of the whole canvas when nothing is selected"
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+            className="whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
           >
             {exportTo.label}
           </button>
