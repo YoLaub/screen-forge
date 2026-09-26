@@ -12,7 +12,9 @@ import {
   Path,
   Point,
   Polygon,
+  Polyline,
   Rect,
+  util,
   type TMat2D,
 } from "fabric";
 import { useEffect, useRef, useState } from "react";
@@ -46,7 +48,8 @@ import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
-import { type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { type Matrix, cropBox, rectPolygon, splitByLine, toImagePoints } from "./cut";
+import { type CutMode, type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { nextZoom } from "./viewport";
 
@@ -102,6 +105,46 @@ function renderRegion(canvas: Canvas, box: Box, multiplier = renderScale(box, RE
   } finally {
     canvas.setViewportTransform(viewport);
   }
+}
+
+type CaptureNode = FabricImage & SfProps;
+
+function tracePolygon(ctx: CanvasRenderingContext2D, poly: Pt[]) {
+  ctx.beginPath();
+  poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.closePath();
+}
+
+/** PNG of the pixels of `source` inside `poly` (image pixels), cropped to `box`. */
+function piecePng(source: CanvasImageSource, poly: Pt[], box: Box): string {
+  const el = document.createElement("canvas");
+  el.width = box.width;
+  el.height = box.height;
+  const ctx = el.getContext("2d")!;
+  ctx.translate(-box.left, -box.top);
+  tracePolygon(ctx, poly);
+  ctx.clip();
+  ctx.drawImage(source, 0, 0);
+  return el.toDataURL("image/png");
+}
+
+/** PNG of `source` with the pixels inside `poly` made transparent. */
+function holedPng(source: CanvasImageSource, width: number, height: number, poly: Pt[]): string {
+  const el = document.createElement("canvas");
+  el.width = width;
+  el.height = height;
+  const ctx = el.getContext("2d")!;
+  ctx.drawImage(source, 0, 0);
+  ctx.globalCompositeOperation = "destination-out";
+  tracePolygon(ctx, poly);
+  ctx.fill();
+  return el.toDataURL("image/png");
+}
+
+/** Scene center of an image-pixel box of `img`, which keeps the piece exactly where it was cut. */
+function pieceCenter(img: FabricImage, box: Box): Point {
+  const local = new Point(box.left + box.width / 2 - img.width / 2, box.top + box.height / 2 - img.height / 2);
+  return local.transform(img.calcTransformMatrix());
 }
 
 function exportScale(box: Box): number {
@@ -242,6 +285,13 @@ const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
   { id: "polygon", label: "Polygon", key: "no key", hint: "Drag to draw" },
   { id: "pen", label: "Pen", key: "P", hint: "Click for corners, drag for curves; click the first point to close, Enter to finish; double-click a path to edit it" },
   { id: "text", label: "Text", key: "T", hint: "Click to type" },
+  { id: "cut", label: "Cut", key: "C", hint: "Cut a part out of a capture, then move it" },
+];
+
+const CUT_MODES: { mode: CutMode; label: string; hint: string }[] = [
+  { mode: "lasso", label: "Lasso", hint: "Draw freehand around the part to cut out" },
+  { mode: "line", label: "Line", hint: "Draw a line across a capture to split it in two" },
+  { mode: "rect", label: "Rectangle", hint: "Drag a box around the part to cut out" },
 ];
 
 const WIREFRAME = { fill: "#e5e7eb", stroke: "#6b7280", strokeWidth: 1, strokeUniform: true };
@@ -356,6 +406,9 @@ export default function CanvasView({ root }: { root: string }) {
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
+  const [cutMode, setCutMode] = useState<CutMode>("lasso");
+  const cutModeRef = useRef<CutMode>("lasso");
+  cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
   const [booleanCount, setBooleanCount] = useState(0);
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
@@ -745,7 +798,7 @@ export default function CanvasView({ root }: { root: string }) {
     };
     canvas.on("mouse:down", ({ e }) => {
       const t = toolRef.current;
-      if (t === "select" || t === "pen" || spaceDown) return;
+      if (t === "select" || t === "pen" || t === "cut" || spaceDown) return;
       const start = canvas.getScenePoint(e);
       if (t === "text") {
         const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: TEXT_FONT, fill: "#111827" });
@@ -780,6 +833,90 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.add(shape);
       finishShape(shape, t);
     });
+    // Cut: the gesture cuts the topmost capture it reaches. Lasso and box cut
+    // a piece out (the capture keeps a transparent hole); a line splits the
+    // capture in two. The capture keeps its id, name, notes and links.
+    let cut: { mode: CutMode; points: Point[]; preview: FabricObject | null } | null = null;
+    const drawCutPreview = () => {
+      if (!cut) return;
+      if (cut.preview) canvas.remove(cut.preview);
+      const [first] = cut.points;
+      const last = cut.points[cut.points.length - 1];
+      const style = { ...DISPLAY_ONLY, fill: "", stroke: "#2563eb", strokeWidth: 1.5 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()] };
+      cut.preview =
+        cut.mode === "line"
+          ? new Line([first.x, first.y, last.x, last.y], style)
+          : new Polyline(cut.mode === "rect" ? [...rectPolygon(first, last), first] : cut.points, style);
+      canvas.add(cut.preview);
+      canvas.requestRenderAll();
+    };
+    const cutCapture = async (mode: CutMode, points: Pt[]) => {
+      const captures = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n): n is CaptureNode => n.sfKind === "capture" && isShown(n) && !n.sfLocked && n instanceof FabricImage)
+        .reverse();
+      for (const img of captures) {
+        const inverse = util.invertTransform(img.calcTransformMatrix()) as unknown as Matrix;
+        const local = toImagePoints(points, inverse, img.width, img.height);
+        const source = img.getElement() as CanvasImageSource;
+        const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+        const pieceName = nextNodeName("capture", names, `${img.sfName} cut`);
+        const place = async (dataUrl: string, box: Box, target?: CaptureNode) => {
+          const center = pieceCenter(img, box);
+          const piece = target ?? (await FabricImage.fromURL(dataUrl));
+          if (target) await target.setSrc(dataUrl);
+          else tagAsNode(canvas, piece, "capture", pieceName);
+          piece.set({ left: center.x, top: center.y, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle, flipX: img.flipX, flipY: img.flipY });
+          piece.setCoords();
+          return piece;
+        };
+        if (mode === "line") {
+          const halves = splitByLine(img.width, img.height, local[0], local[local.length - 1]);
+          if (!halves) continue;
+          const boxes = halves.map((h) => cropBox(h, img.width, img.height)!);
+          const urls = halves.map((h, i) => piecePng(source, h, boxes[i]));
+          // The new half is placed before the original is reshaped: both use its transform.
+          const other = await place(urls[1], boxes[1]);
+          await place(urls[0], boxes[0], img);
+          canvas.insertAt(canvas.getObjects().indexOf(img) + 1, other);
+          canvas.setActiveObject(other);
+        } else {
+          const poly = mode === "rect" ? rectPolygon(local[0], local[local.length - 1]) : local;
+          const box = poly.length >= 3 ? cropBox(poly, img.width, img.height) : null;
+          if (!box) continue;
+          const piece = await place(piecePng(source, poly, box), box);
+          await img.setSrc(holedPng(source, img.width, img.height, poly));
+          canvas.insertAt(canvas.getObjects().indexOf(img) + 1, piece);
+          canvas.setActiveObject(piece);
+        }
+        canvas.requestRenderAll();
+        afterEditRef.current();
+        return;
+      }
+      setStatus("Nothing to cut: draw over a capture");
+    };
+    canvas.on("mouse:down", ({ e }) => {
+      if (toolRef.current !== "cut" || spaceDown) return;
+      cut = { mode: cutModeRef.current, points: [canvas.getScenePoint(e)], preview: null };
+    });
+    canvas.on("mouse:move", ({ e }) => {
+      if (!cut) return;
+      const p = canvas.getScenePoint(e);
+      if (cut.mode === "lasso") cut.points.push(p);
+      else cut.points = [cut.points[0], p];
+      drawCutPreview();
+    });
+    canvas.on("mouse:up", () => {
+      if (!cut) return;
+      const { mode, points, preview } = cut;
+      cut = null;
+      if (preview) canvas.remove(preview);
+      setTool("select");
+      if (points.length < 2) return;
+      cutCapture(mode, points).catch((error) => setStatus(`Cut failed: ${String(error)}`));
+    });
+
     // Pen: click for a corner, drag for a smooth point; click the first point to
     // close, Enter or Escape to finish open, Backspace to drop the last point.
     let pen: { anchors: Anchor[]; pressed: Point | null; cursor: Point | null; preview: FabricObject[] } | null = null;
@@ -1074,6 +1211,21 @@ export default function CanvasView({ root }: { root: string }) {
               </button>
             ))}
           </div>
+          {tool === "cut" && (
+            <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+              {CUT_MODES.map(({ mode, label, hint }) => (
+                <button
+                  key={mode}
+                  onClick={() => setCutMode(mode)}
+                  aria-pressed={cutMode === mode}
+                  title={hint}
+                  className={`px-3 py-1.5 text-sm ${cutMode === mode ? "bg-blue-600 text-white" : "hover:bg-neutral-50"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={openPicker}
             title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."

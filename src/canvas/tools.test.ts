@@ -13,6 +13,7 @@ describe("toolForKey", () => {
     expect(toolForKey(key("p"))).toBe("pen");
     expect(toolForKey(key("a"))).toBe("arrow");
     expect(toolForKey(key("x"))).toBe("cross");
+    expect(toolForKey(key("c"))).toBe("cut");
   });
 
   it("ignores shortcuts that use a modifier (Cmd+V is paste)", () => {
