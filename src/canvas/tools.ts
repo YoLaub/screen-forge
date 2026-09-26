@@ -1,7 +1,8 @@
 import { type Box, type Pt, arrowHead } from "./geometry";
 
-export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "arrow" | "cross" | "polygon" | "pen" | "text";
-export type DrawingTool = Exclude<Tool, "select">;
+export type Tool = "select" | "frame" | "rect" | "ellipse" | "line" | "arrow" | "cross" | "polygon" | "pen" | "text" | "cut";
+/** Tools that draw a new node (the cutter reshapes captures instead). */
+export type DrawingTool = Exclude<Tool, "select" | "cut">;
 
 const TOOL_KEYS: Record<string, Tool> = {
   v: "select",
@@ -11,6 +12,7 @@ const TOOL_KEYS: Record<string, Tool> = {
   l: "line",
   a: "arrow",
   x: "cross",
+  c: "cut",
   p: "pen",
   t: "text",
 };
@@ -87,3 +89,6 @@ export function crossPath(box: Box): string {
 export function arrowHeadSize(strokeWidth: number): number {
   return 10 + 3 * strokeWidth;
 }
+
+/** How the cut tool draws the part to cut. */
+export type CutMode = "lasso" | "line" | "rect";
