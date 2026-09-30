@@ -53,7 +53,7 @@ import { type LayerRow, hasInstructions, layerIcon, layerRows, layersLayout, loc
 import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
-import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
+import WindowPicker, { type PickerState, captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
 import Toolbar from "./Toolbar";
@@ -519,7 +519,9 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const exportRef = useRef<() => Promise<void>>(async () => {});
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
-  useEffect(() => onExportLabel?.(exportTo.label), [exportTo.label, onExportLabel]);
+  useEffect(() => {
+    onExportLabel?.(exportTo.label);
+  }, [exportTo.label, onExportLabel]);
   useEffect(() => {
     if (!controls) return;
     controls.current = {
@@ -548,9 +550,9 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   } | null>(null);
   const toolRef = useRef<Tool>("select");
   toolRef.current = tool;
-  const [picker, setPicker] = useState<{ windows: WindowInfo[]; permissionMissing: boolean } | null>(
-    null,
-  );
+  const [picker, setPicker] = useState<PickerState | null>(null);
+  // Identifies the latest open of the picker: a listing that finishes after a cancel is dropped.
+  const pickerTicket = useRef(0);
 
   useEffect(() => {
     const container = containerRef.current!;
@@ -1598,16 +1600,26 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   }, [tool]);
 
   async function openPicker() {
+    const ticket = ++pickerTicket.current;
+    setPicker({ status: "loading" });
     try {
       const granted = await ensureScreenCaptureAccess();
-      setPicker({ windows: granted ? await listWindows() : [], permissionMissing: !granted });
+      const next: PickerState = granted ? { status: "list", windows: await listWindows() } : { status: "permission" };
+      if (ticket === pickerTicket.current) setPicker(next);
     } catch (error) {
+      if (ticket !== pickerTicket.current) return;
+      setPicker(null);
       push(failureToast("Could not list windows", error));
     }
   }
 
-  async function pickWindow(w: WindowInfo) {
+  function closePicker() {
+    pickerTicket.current++;
     setPicker(null);
+  }
+
+  async function pickWindow(w: WindowInfo) {
+    closePicker();
     try {
       const png = await captureWindow(w.id);
       await addImageRef.current(`data:image/png;base64,${png}`, captureName(w));
@@ -1708,11 +1720,12 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         )}
         {picker && (
           <WindowPicker
-            windows={picker.windows}
-            permissionMissing={picker.permissionMissing}
+            state={picker}
+            capture={captureWindow}
             onOpenSettings={() => openScreenCaptureSettings()}
+            onRetry={openPicker}
             onPick={pickWindow}
-            onCancel={() => setPicker(null)}
+            onCancel={closePicker}
           />
         )}
         <Toasts toasts={toasts} onClose={dismiss} />
