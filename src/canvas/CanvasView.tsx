@@ -34,6 +34,7 @@ import {
 import { createAutosave } from "./autosave";
 import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
 import { duplicateProps } from "./duplicate";
+import { bezierPoint, gridBackground, linkCurve, selectionOverlay } from "./canvasVisuals";
 import { flattenScale, mergedNodeProps } from "./flatten";
 import InstructionPins, { type Pin } from "./InstructionPins";
 import { pinNumbers, pinPlacement } from "./pins";
@@ -41,7 +42,7 @@ import { expandToGroups, newGroupId, withGroupRows } from "./groups";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
-import { type Box, type Pt, arrowBetween, arrowHead, lockToAxis } from "./geometry";
+import { type Box, type Pt, arrowHead, lockToAxis } from "./geometry";
 import { firstImageFile } from "./imageFile";
 import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
@@ -251,40 +252,92 @@ function toInspectorNode(obj: FabricObject & SfProps, pin: number | undefined, c
   };
 }
 
+/** Selection box and handles in the theme's selection color (mockup: teal box, white square corners). */
+function styleSelection(canvas: Canvas, theme: Theme) {
+  const look = {
+    borderColor: theme.sel,
+    cornerColor: theme.panel,
+    cornerStrokeColor: theme.sel,
+    transparentCorners: false,
+    cornerSize: 8,
+    borderScaleFactor: 1.5,
+  };
+  Object.assign(FabricObject.ownDefaults, look);
+  canvas.getObjects().forEach((o) => o.set(look));
+  canvas.getActiveObject()?.set(look);
+  canvas.requestRenderAll();
+}
+
 /** Link arrows and frame names are display only: rebuilt from node props, never saved. */
 function drawOverlays(canvas: Canvas, previous: FabricObject[], theme: Theme): FabricObject[] {
   previous.forEach((a) => canvas.remove(a));
   const nodes = canvas.getObjects().filter(isNode).filter(isShown);
   const byId = new Map(nodes.map((n) => [n.sfId, n]));
+  const selected = new Set((canvas.getActiveObjects() as SfObject[]).filter(isNode).map((n) => n.sfId));
   const overlays: FabricObject[] = [];
   const display = { selectable: false, evented: false, excludeFromExport: true };
+  const add = (obj: FabricObject) => {
+    canvas.add(obj);
+    overlays.push(obj);
+  };
   for (const frame of nodes.filter((n) => n.sfKind === "frame")) {
     const bounds = frame.getBoundingRect();
-    const label = new FabricText(frame.sfName, {
-      ...display,
-      left: bounds.left,
-      top: bounds.top - 6,
-      originX: "left",
-      originY: "bottom",
-      fontSize: 14,
-      fontFamily: TEXT_FONT,
-      fill: theme.tx2,
-    });
-    canvas.add(label);
-    overlays.push(label);
+    add(
+      new FabricText(frame.sfName, {
+        ...display,
+        left: bounds.left,
+        top: bounds.top - 6,
+        originX: "left",
+        originY: "bottom",
+        fontSize: 12,
+        fontWeight: 500,
+        fontFamily: TEXT_FONT,
+        fill: selected.has(frame.sfId) ? theme.sel : theme.tx2,
+      }),
+    );
   }
+  // Added last, so links stay above frames and the nodes they link.
   for (const source of nodes) {
     for (const link of source.sfLinks ?? []) {
       const target = byId.get(link.target_node);
       if (!target) continue;
-      const line = arrowBetween(source.getBoundingRect(), target.getBoundingRect());
-      if (!line) continue;
-      const [b1, b2] = arrowHead(line.from, line.to, 12);
-      const d = `M ${line.from.x} ${line.from.y} L ${line.to.x} ${line.to.y} M ${b1.x} ${b1.y} L ${line.to.x} ${line.to.y} L ${b2.x} ${b2.y}`;
-      // Added last, so arrows stay above frames and the nodes they link.
-      const arrow = new Path(d, { ...display, fill: "", stroke: theme.link, strokeWidth: 2 });
-      canvas.add(arrow);
-      overlays.push(arrow);
+      const curve = linkCurve(source.getBoundingRect(), target.getBoundingRect());
+      if (!curve) continue;
+      const { from, c1, c2, to } = curve;
+      add(new Path(`M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`, { ...display, fill: "", stroke: theme.link, strokeWidth: 1.5 }));
+      const [b1, b2] = arrowHead(c2, to, 10);
+      add(new Polygon([b1, to, b2], { ...display, fill: theme.link, stroke: "" }));
+      if (link.trigger.trim()) {
+        // Mono chip with the trigger, at the middle of the curve.
+        const mid = bezierPoint(from, c1, c2, to, 0.5);
+        const text = new FabricText(link.trigger.trim(), {
+          ...display,
+          left: mid.x,
+          top: mid.y,
+          originX: "center",
+          originY: "center",
+          fontSize: 10,
+          fontFamily: "Geist Mono, ui-monospace, monospace",
+          fill: theme.tx2,
+        });
+        add(
+          new Rect({
+            ...display,
+            left: mid.x,
+            top: mid.y,
+            originX: "center",
+            originY: "center",
+            width: text.width + 12,
+            height: text.height + 4,
+            rx: 5,
+            ry: 5,
+            fill: theme.panel,
+            stroke: theme.line2,
+            strokeWidth: 1,
+          }),
+        );
+        add(text);
+      }
     }
   }
   canvas.requestRenderAll();
@@ -447,6 +500,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
   const [pins, setPins] = useState<Pin[]>([]);
+  const [selectionUi, setSelectionUi] = useState<ReturnType<typeof selectionOverlay> | null>(null);
   const [booleanCount, setBooleanCount] = useState(0);
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
   const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
@@ -491,12 +545,14 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
     const canvas = new Canvas(canvasElRef.current!, {
       width: container.clientWidth,
       height: container.clientHeight,
-      backgroundColor: currentTheme().canvas,
+      // Transparent: the canvas color and dot grid are the container's background.
+      backgroundColor: "",
       preserveObjectStacking: true,
       // Let right-clicks reach the context menu (Fabric swallows them by default).
       stopContextMenu: false,
     });
     fabricRef.current = canvas;
+    styleSelection(canvas, currentTheme());
     let loading = true;
 
     const autosave = createAutosave(
@@ -534,7 +590,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       overlays = drawOverlays(canvas, overlays, currentTheme());
     };
     const unlistenTheme = onThemeChange((theme) => {
-      canvas.backgroundColor = theme.canvas;
+      styleSelection(canvas, theme);
       redrawArrows();
     });
     // Arrow objects come and go on every redraw: only node changes trigger a save.
@@ -564,7 +620,27 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
     // Instruction pins follow every render (pan, zoom, moves); React only
     // re-renders when a pin actually changed.
     let pinsKey = "";
+    let selectionKey = "";
     canvas.on("after:render", () => {
+      const grid = gridBackground(canvas.viewportTransform);
+      container.style.backgroundSize = `${grid.size}px ${grid.size}px`;
+      container.style.backgroundPosition = `${grid.x}px ${grid.y}px`;
+      const active = canvas.getActiveObject();
+      let ui: ReturnType<typeof selectionOverlay> | null = null;
+      if (active && !(active instanceof IText && active.isEditing)) {
+        const b = active.getBoundingRect();
+        const tl = new Point(b.left, b.top).transform(canvas.viewportTransform);
+        const br = new Point(b.left + b.width, b.top + b.height).transform(canvas.viewportTransform);
+        ui = selectionOverlay(
+          { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+          { width: active.getScaledWidth(), height: active.getScaledHeight() },
+        );
+      }
+      const uiKey = JSON.stringify(ui);
+      if (uiKey !== selectionKey) {
+        selectionKey = uiKey;
+        setSelectionUi(ui);
+      }
       const numbers = pinNumbers(layerItems);
       const vpt = canvas.viewportTransform;
       const next = canvas
@@ -632,6 +708,8 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const active = canvas.getActiveObjects() as SfObject[];
       const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
       setBooleanCount(active.filter(isNode).filter(isBooleanShape).length);
+      // Frame names turn teal when their frame is selected.
+      redrawArrows();
       setExportTo(exportTarget(active.filter(isNode).map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName));
       const nodes = canvas.getObjects().filter(isNode);
       setSelected(
@@ -1550,8 +1628,21 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
           </button>
         )}
         <Toolbar tool={tool} choice={choice} cutMode={cutMode} onTool={setTool} onCutMode={setCutMode} onCapture={openPicker} />
-        {booleanCount >= 2 && (
-          <div className="absolute top-[60px] left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[9px] border border-line2 bg-panel p-1 shadow-panel">
+        {selectionUi && (
+          <span
+            className="pointer-events-none absolute z-[6] -translate-x-1/2 rounded bg-sel px-[5px] py-px font-mono text-[10px] font-medium whitespace-nowrap text-acc-tx"
+            style={{ left: selectionUi.chip.x, top: selectionUi.chip.y }}
+          >
+            {selectionUi.chip.label}
+          </span>
+        )}
+        {booleanCount >= 2 && selectionUi && (
+          <div
+            onMouseDownCapture={(e) => e.stopPropagation()}
+            className="absolute z-10 flex items-center gap-0.5 rounded-[9px] border border-line2 bg-panel p-1 whitespace-nowrap shadow-panel"
+            style={{ left: selectionUi.bar.x, top: selectionUi.bar.y }}
+          >
+            <span className="pr-2 pl-1.5 text-[11px] text-tx3">{booleanCount} shapes</span>
             {BOOLEAN_OPS.map(({ op, label }) => (
               <button
                 key={op}
@@ -1576,7 +1667,12 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         <div className="absolute bottom-2 right-3 z-10 text-xs text-tx3">{status}</div>
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild onContextMenu={(e) => menuOpsRef.current && setMenu(menuOpsRef.current.open(e.nativeEvent))}>
-            <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
+            <div
+              ref={containerRef}
+              data-testid="canvas-root"
+              className="h-full w-full bg-canvas"
+              style={{ backgroundImage: "radial-gradient(var(--dot) 1px, transparent 1.2px)" }}
+            >
               <canvas ref={canvasElRef} />
             </div>
           </ContextMenu.Trigger>
