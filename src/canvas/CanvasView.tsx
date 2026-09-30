@@ -17,6 +17,7 @@ import {
   util,
   type TMat2D,
 } from "fabric";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
@@ -31,6 +32,7 @@ import {
   type NodeExportDto,
 } from "../services/backend";
 import { createAutosave } from "./autosave";
+import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
 import { duplicateProps } from "./duplicate";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
@@ -415,6 +417,14 @@ export default function CanvasView({ root }: { root: string }) {
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
   const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
   const exportRef = useRef<() => Promise<void>>(async () => {});
+  const menuOpsRef = useRef<{
+    open: (e: MouseEvent) => { targets: MenuTargets; hasClipboard: boolean };
+    run: (action: MenuAction) => void;
+  } | null>(null);
+  const [menu, setMenu] = useState<{ targets: MenuTargets; hasClipboard: boolean }>({
+    targets: { count: 0, allLocked: false },
+    hasClipboard: false,
+  });
   const layerOpsRef = useRef<{
     select: (id: string) => void;
     rename: (id: string, name: string) => void;
@@ -437,6 +447,8 @@ export default function CanvasView({ root }: { root: string }) {
       height: container.clientHeight,
       backgroundColor: "#f5f5f5",
       preserveObjectStacking: true,
+      // Let right-clicks reach the context menu (Fabric swallows them by default).
+      stopContextMenu: false,
     });
     fabricRef.current = canvas;
     let loading = true;
@@ -581,8 +593,8 @@ export default function CanvasView({ root }: { root: string }) {
     // Layers panel actions. Reordering moves past the other nodes only: arrows
     // and frame labels are objects of the stack too.
     const nodeById = (id: string) => canvas.getObjects().filter(isNode).find((n) => n.sfId === id);
-    const restack = (direction: 1 | -1) => {
-      const obj = canvas.getActiveObject() as SfObject | undefined;
+    const restack = (direction: 1 | -1, target?: SfObject) => {
+      const obj = target ?? (canvas.getActiveObject() as SfObject | undefined);
       if (!obj || !isNode(obj)) return;
       const nodes = canvas.getObjects().filter(isNode);
       const neighbour = nodes[nodes.indexOf(obj) + direction];
@@ -605,23 +617,116 @@ export default function CanvasView({ root }: { root: string }) {
     };
 
     // Copies go right above their originals and become the selection.
-    const duplicate = async () => {
-      const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+    type NodeObject = FabricObject & SfProps;
+    const selectedNodes = () => (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+    const selectNodes = (nodes: FabricObject[]) => {
+      if (nodes.length === 0) return;
+      canvas.setActiveObject(nodes.length === 1 ? nodes[0] : new ActiveSelection(nodes, { canvas }));
+    };
+    /** Copies and pasted nodes start unlocked, with fresh ids. */
+    const addAsCopies = (sources: NodeObject[], copies: FabricObject[]) => {
+      const props = duplicateProps(sources, newNodeId);
+      copies.forEach((copy, i) => {
+        Object.assign(copy, props[i], { sfLocked: false });
+        copy.set(lockProps(false));
+      });
+    };
+    const duplicate = async (targets?: NodeObject[]) => {
+      const picked = targets ?? selectedNodes();
       if (picked.length === 0) return;
       // Out of the selection group, objects carry their absolute placement.
       canvas.discardActiveObject();
       const ordered = canvas.getObjects().filter((o) => picked.includes(o as FabricObject & SfProps)) as (FabricObject & SfProps)[];
-      const props = duplicateProps(ordered, newNodeId);
       const copies = await Promise.all(ordered.map((o) => o.clone()));
+      addAsCopies(ordered, copies);
       copies.forEach((copy, i) => {
-        Object.assign(copy, props[i]);
         copy.set({ left: copy.left + DUPLICATE_OFFSET, top: copy.top + DUPLICATE_OFFSET });
         copy.setCoords();
         canvas.insertAt(canvas.getObjects().indexOf(ordered[i]) + 1, copy);
       });
-      canvas.setActiveObject(copies.length === 1 ? copies[0] : new ActiveSelection(copies, { canvas }));
+      selectNodes(copies);
       canvas.requestRenderAll();
       afterEditRef.current();
+    };
+
+    // Copy and paste stay inside ScreenForge: a copy is a snapshot of the nodes,
+    // pasted with fresh ids. An image on the system clipboard still pastes as a capture.
+    let clipboard: { objects: Record<string, unknown>[]; bounds: Box } | null = null;
+    let pasteCount = 0;
+    const copy = (targets: NodeObject[]) => {
+      if (targets.length === 0) return;
+      const selected = selectedNodes();
+      const grouped = targets.some((t) => selected.includes(t));
+      // Out of the selection group, objects carry their absolute placement.
+      if (grouped) canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => targets.includes(o as NodeObject)) as NodeObject[];
+      clipboard = { objects: ordered.map((o) => o.toObject()), bounds: unionBox(ordered.map((o) => o.getBoundingRect()), 0)! };
+      pasteCount = 0;
+      if (grouped) selectNodes(selected);
+      canvas.requestRenderAll();
+    };
+    const paste = async (at?: Pt) => {
+      if (!clipboard) return;
+      pasteCount += 1;
+      const d = pasteDelta(clipboard.bounds, pasteCount, at);
+      const pasted = (await util.enlivenObjects(clipboard.objects)) as FabricObject[];
+      addAsCopies(clipboard.objects as unknown as NodeObject[], pasted);
+      canvas.discardActiveObject();
+      for (const obj of pasted) {
+        obj.set({ left: obj.left + d.x, top: obj.top + d.y });
+        obj.setCoords();
+        canvas.add(obj);
+        // Frames sit behind the elements placed on them.
+        if ((obj as NodeObject).sfKind === "frame") canvas.sendObjectToBack(obj);
+      }
+      selectNodes(pasted);
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+    const setLocked = (targets: NodeObject[], locked: boolean) => {
+      for (const obj of targets) {
+        obj.sfLocked = locked;
+        obj.set(lockProps(locked));
+      }
+      if (locked) canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+
+    // Right-click acts on the selection when it is clicked, else on the node
+    // under the pointer (locked ones included, so they can be unlocked).
+    let menuTargets: NodeObject[] = [];
+    let menuPoint: Point | null = null;
+    const nodeAt = (p: Point) =>
+      canvas.getObjects().filter(isNode).filter(isShown).reverse().find((o) => o.containsPoint(p));
+    menuOpsRef.current = {
+      open: (e) => {
+        menuPoint = canvas.getScenePoint(e);
+        const hit = nodeAt(menuPoint);
+        const selected = selectedNodes();
+        if (hit && selected.includes(hit)) {
+          menuTargets = selected;
+        } else {
+          menuTargets = hit ? [hit] : [];
+          canvas.discardActiveObject();
+          if (hit && !hit.sfLocked) canvas.setActiveObject(hit);
+          canvas.requestRenderAll();
+          syncSelection();
+        }
+        return {
+          targets: { count: menuTargets.length, allLocked: menuTargets.length > 0 && menuTargets.every((t) => t.sfLocked) },
+          hasClipboard: clipboard !== null,
+        };
+      },
+      run: (action) => {
+        const targets = menuTargets;
+        const fail = (error: unknown) => setStatus(`${action} failed: ${String(error)}`);
+        if (action === "copy") copy(targets);
+        if (action === "paste") paste(menuPoint ?? undefined).catch(fail);
+        if (action === "duplicate") duplicate(targets).catch(fail);
+        if (action === "lock") setLocked(targets, !targets.every((t) => t.sfLocked));
+        if (action === "forward" || action === "backward") restack(action === "forward" ? 1 : -1, targets[0]);
+      },
     };
     layerOpsRef.current = {
       select: (id) => {
@@ -736,6 +841,10 @@ export default function CanvasView({ root }: { root: string }) {
       if (e.metaKey && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         restack(e.key === "]" ? 1 : -1);
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "c") {
+        copy(selectedNodes());
         return;
       }
       if (e.metaKey && e.key.toLowerCase() === "d") {
@@ -1110,8 +1219,15 @@ export default function CanvasView({ root }: { root: string }) {
       await addImage(dataUrl, at);
     };
     const onPaste = (e: ClipboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const file = firstImageFile(e.clipboardData?.files);
-      if (!file) return;
+      if (!file) {
+        if (clipboard) {
+          e.preventDefault();
+          paste().catch((error) => setStatus(`Paste failed: ${String(error)}`));
+        }
+        return;
+      }
       e.preventDefault();
       addCapture(file, canvas.getVpCenter()).catch((error) => setStatus(`Paste failed: ${String(error)}`));
     };
@@ -1286,9 +1402,32 @@ export default function CanvasView({ root }: { root: string }) {
           />
         )}
         <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
-        <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
-          <canvas ref={canvasElRef} />
-        </div>
+        <ContextMenu.Root>
+          <ContextMenu.Trigger asChild onContextMenu={(e) => menuOpsRef.current && setMenu(menuOpsRef.current.open(e.nativeEvent))}>
+            <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
+              <canvas ref={canvasElRef} />
+            </div>
+          </ContextMenu.Trigger>
+          <ContextMenu.Portal>
+            <ContextMenu.Content className="z-40 min-w-48 rounded-md border border-neutral-200 bg-white p-1 text-sm shadow-lg">
+              {menuItems(menu.targets, menu.hasClipboard).map((item, i) =>
+                item === "separator" ? (
+                  <ContextMenu.Separator key={i} className="my-1 h-px bg-neutral-200" />
+                ) : (
+                  <ContextMenu.Item
+                    key={item.id}
+                    disabled={!item.enabled}
+                    onSelect={() => menuOpsRef.current?.run(item.id)}
+                    className="flex cursor-default items-center justify-between gap-6 rounded px-2 py-1 outline-none data-[disabled]:text-neutral-300 data-[highlighted]:bg-neutral-100"
+                  >
+                    {item.label}
+                    {item.shortcut && <span className="text-xs text-neutral-400">{item.shortcut}</span>}
+                  </ContextMenu.Item>
+                ),
+              )}
+            </ContextMenu.Content>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
       </div>
       {selected && <NodeInspector node={selected} others={others} onChange={onInspectorChange} />}
     </div>

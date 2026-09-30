@@ -38,3 +38,13 @@ describe("duplicateProps", () => {
     expect(original.sfLinks).toHaveLength(1);
   });
 });
+
+describe("duplicateProps on serialized objects", () => {
+  it("returns only the ScreenForge node props, not the drawing props of the source", () => {
+    const serialized = { ...node("vec_a", "A"), type: "Rect", left: 10, fill: { type: "linear" } };
+    const [copy] = duplicateProps([serialized], newId);
+    expect(copy).not.toHaveProperty("type");
+    expect(copy).not.toHaveProperty("left");
+    expect(copy).not.toHaveProperty("fill");
+  });
+});
