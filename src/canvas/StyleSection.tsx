@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
+import { DRAWING } from "./drawingDefaults";
 import { type GradientStyle, type NodeStyle, normalizeHex } from "./style";
+
+const DEFAULT_FILL = normalizeHex(DRAWING.shapeFill)!;
+const DEFAULT_STROKE = normalizeHex(DRAWING.shapeStroke)!;
 
 /** Which style properties apply to the selected node. */
 export interface StyleApplies {
@@ -15,7 +19,7 @@ interface Props {
 }
 
 const input =
-  "w-full rounded border border-neutral-300 px-2 py-1 text-sm focus:border-neutral-500 focus:outline-none";
+  "w-full rounded border border-line2 bg-panel2 px-2 py-1 text-sm text-tx focus:border-acc focus:outline-none";
 
 function without(style: NodeStyle, ...keys: (keyof NodeStyle)[]): NodeStyle {
   const next = { ...style };
@@ -37,7 +41,7 @@ function ColorField({ label, value, onColor }: { label: string; value: string; o
       <input
         type="color"
         aria-label={`${label} picker`}
-        className="h-7 w-9 shrink-0 cursor-pointer rounded border border-neutral-300 bg-white"
+        className="h-7 w-9 shrink-0 cursor-pointer rounded border border-line2 bg-panel"
         value={value.toLowerCase()}
         onChange={(e) => onColor(normalizeHex(e.target.value) ?? value)}
       />
@@ -56,7 +60,7 @@ function ColorField({ label, value, onColor }: { label: string; value: string; o
 function NumberField({ label, value, min = 0, onValue }: { label: string; value: number; min?: number; onValue: (n: number) => void }) {
   return (
     <label className="flex items-center justify-between gap-2">
-      <span className="text-neutral-500">{label}</span>
+      <span className="text-tx2">{label}</span>
       <input
         type="number"
         aria-label={label}
@@ -73,7 +77,7 @@ type FillMode = "none" | "solid" | "linear" | "radial";
 
 export default function StyleSection({ style, applies, onStyle }: Props) {
   const mode: FillMode = style.gradient ? style.gradient.kind : style.fill ? "solid" : "none";
-  const firstColor = style.fill ?? style.gradient?.stops[0]?.color ?? "#E5E7EB";
+  const firstColor = style.fill ?? style.gradient?.stops[0]?.color ?? DEFAULT_FILL;
 
   const setMode = (next: FillMode) => {
     const base = without(style, "fill", "gradient");
@@ -85,7 +89,7 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
         ...(next === "linear" && { angle: style.gradient?.angle ?? 90 }),
         stops: style.gradient?.stops ?? [
           { offset: 0, color: firstColor },
-          { offset: 1, color: "#FFFFFF" },
+          { offset: 1, color: DRAWING.gradientEnd },
         ],
       };
       onStyle({ ...base, gradient });
@@ -98,12 +102,12 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
 
   return (
     <section className="flex flex-col gap-2">
-      <span className="font-medium text-neutral-700">Style</span>
+      <span className="font-medium text-tx">Style</span>
 
       {applies.fill && (
         <>
           <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Fill</span>
+            <span className="text-tx2">Fill</span>
             <select aria-label="Fill type" className={`${input} w-36`} value={mode} onChange={(e) => setMode(e.target.value as FillMode)}>
               <option value="none">None</option>
               <option value="solid">Solid</option>
@@ -128,17 +132,17 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
         </>
       )}
 
-      <span className="text-neutral-500">Stroke</span>
+      <span className="text-tx2">Stroke</span>
       <ColorField
         label="Stroke color"
-        value={style.stroke ?? "#6B7280"}
+        value={style.stroke ?? DEFAULT_STROKE}
         onColor={(stroke) => onStyle({ ...style, stroke, stroke_width: style.stroke_width ?? 1 })}
       />
       <NumberField
         label="Stroke width"
         value={style.stroke ? (style.stroke_width ?? 1) : 0}
         onValue={(w) =>
-          onStyle(w === 0 ? without(style, "stroke", "stroke_width") : { ...style, stroke: style.stroke ?? "#6B7280", stroke_width: w })
+          onStyle(w === 0 ? without(style, "stroke", "stroke_width") : { ...style, stroke: style.stroke ?? DEFAULT_STROKE, stroke_width: w })
         }
       />
 
@@ -154,7 +158,7 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
         <>
           <NumberField label="Font size" value={style.font_size ?? 20} min={1} onValue={(font_size) => onStyle({ ...style, font_size })} />
           <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Font weight</span>
+            <span className="text-tx2">Font weight</span>
             <select
               aria-label="Font weight"
               className={`${input} w-28`}
@@ -169,7 +173,7 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
       )}
 
       <label className="flex items-center justify-between gap-2">
-        <span className="text-neutral-500">Opacity</span>
+        <span className="text-tx2">Opacity</span>
         <input
           type="range"
           aria-label="Opacity"

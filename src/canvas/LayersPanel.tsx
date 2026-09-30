@@ -14,7 +14,7 @@ interface Props {
 
 const KIND_ICON = { frame: "▢", capture: "▣", vector_drawing: "◇", group: "⧉" } as const;
 
-const iconButton = "w-6 shrink-0 text-center text-neutral-400 hover:text-neutral-900";
+const iconButton = "w-6 shrink-0 text-center text-tx3 hover:text-tx";
 
 export default function LayersPanel({
   rows,
@@ -34,9 +34,9 @@ export default function LayersPanel({
   };
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-neutral-200 bg-white text-sm">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-        <span className="font-medium text-neutral-700">Layers</span>
+    <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-panel text-sm">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2">
+        <span className="font-medium text-tx">Layers</span>
         <div className="flex gap-1">
           <button
             aria-label="Bring forward"
@@ -62,17 +62,17 @@ export default function LayersPanel({
         {rows.map(({ item, depth }) => (
           <li
             key={item.id}
-            className={`group flex items-center gap-1 px-2 py-1 ${item.id === selectedId ? "bg-blue-50" : "hover:bg-neutral-50"} ${
-              item.hidden ? "text-neutral-400" : "text-neutral-800"
+            className={`group flex items-center gap-1 px-2 py-1 ${item.id === selectedId ? "bg-acc-soft" : "hover:bg-hover"} ${
+              item.hidden ? "text-tx3" : "text-tx"
             }`}
             style={{ paddingLeft: 8 + depth * 14 }}
           >
-            <span className="w-4 shrink-0 text-neutral-400">{KIND_ICON[item.kind]}</span>
+            <span className="w-4 shrink-0 text-tx3">{KIND_ICON[item.kind]}</span>
             {renaming?.id === item.id ? (
               <input
                 autoFocus
                 aria-label={`Rename ${item.name}`}
-                className="min-w-0 flex-1 rounded border border-neutral-300 px-1"
+                className="min-w-0 flex-1 rounded border border-line2 px-1"
                 value={renaming.draft}
                 onChange={(e) => setRenaming({ id: item.id, draft: e.target.value })}
                 onKeyDown={(e) => {
