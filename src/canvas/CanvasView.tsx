@@ -46,7 +46,7 @@ import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
 import { type BooleanOp, booleanShapes } from "./booleans";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
-import { type LayerRow, layerRows, lockProps } from "./layers";
+import { type LayerRow, hasInstructions, layerIcon, layerRows, lockProps } from "./layers";
 import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
@@ -531,6 +531,8 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
               kind: n.sfKind,
               parent: parents[n.sfId],
               group: n.sfGroup,
+              icon: layerIcon({ kind: n.sfKind, type: n.type, shape: n.sfShape }),
+              instructed: hasInstructions(n.sfInstructions),
               hidden: !isShown(n),
               locked: !!n.sfLocked,
             })),
