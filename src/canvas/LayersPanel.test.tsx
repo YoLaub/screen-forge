@@ -11,7 +11,7 @@ const rows: LayerRow[] = [
   },
 ];
 
-function setup(selectedId: string | null = null, shown: LayerRow[] = rows) {
+function setup(selectedId: string | null = null, shown: LayerRow[] = rows, floating = false) {
   const handlers = {
     onSelect: vi.fn(),
     onRename: vi.fn(),
@@ -20,7 +20,7 @@ function setup(selectedId: string | null = null, shown: LayerRow[] = rows) {
     onForward: vi.fn(),
     onBackward: vi.fn(),
   };
-  render(<LayersPanel rows={shown} selectedId={selectedId} {...handlers} />);
+  render(<LayersPanel rows={shown} selectedId={selectedId} floating={floating} {...handlers} />);
   return handlers;
 }
 
@@ -72,5 +72,10 @@ describe("LayersPanel", () => {
     setup(null, []);
     expect(screen.getByText("No layers yet. Captures, frames and annotations will be listed here.")).toBeInTheDocument();
     expect(screen.queryByText(/elements have instructions/)).not.toBeInTheDocument();
+  });
+
+  it("floats over the canvas when asked, docked otherwise", () => {
+    setup(null, rows, true);
+    expect(screen.getByRole("complementary", { name: "Layers" })).toHaveAttribute("data-layout", "floating");
   });
 });

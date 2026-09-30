@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type LayerItem, layerRows, lockProps } from "./layers";
-import { hasInstructions, instructionCoverage, layerIcon } from "./layers";
+import { hasInstructions, instructionCoverage, layerIcon, layersLayout } from "./layers";
 
 const item = (id: string, parent?: string, kind: LayerItem["kind"] = "vector_drawing"): LayerItem => ({
   id,
@@ -81,5 +81,13 @@ describe("instructionCoverage", () => {
       id, name: id, kind, hidden: false, locked: false, instructed,
     });
     expect(instructionCoverage([item("a", true), item("b", false), item("c", true), item("g", true, "group")])).toEqual({ covered: 2, total: 3 });
+  });
+});
+
+describe("layersLayout", () => {
+  it("docks the panel from 1200 px and floats it below", () => {
+    expect(layersLayout(1400)).toBe("docked");
+    expect(layersLayout(1200)).toBe("docked");
+    expect(layersLayout(1199)).toBe("floating");
   });
 });

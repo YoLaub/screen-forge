@@ -46,7 +46,7 @@ import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
 import { type BooleanOp, booleanShapes } from "./booleans";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
-import { type LayerRow, hasInstructions, layerIcon, layerRows, lockProps } from "./layers";
+import { type LayerRow, hasInstructions, layerIcon, layerRows, layersLayout, lockProps } from "./layers";
 import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
@@ -422,6 +422,14 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
   const [cutMode, setCutMode] = useState<CutMode>("lasso");
+  // Layers dock from 1200 px and float over the canvas below (mockup 1d).
+  const [layout, setLayout] = useState(() => layersLayout(window.innerWidth));
+  const [layersOpen, setLayersOpen] = useState(false);
+  useEffect(() => {
+    const onResize = () => setLayout(layersLayout(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   // Which shape and line tool the grouped toolbar buttons show.
   const [choice, setChoice] = useState<GroupChoice>({ shape: "rect", line: "line" });
   useEffect(() => setChoice((c) => rememberInGroup(c, tool)), [tool]);
@@ -1470,8 +1478,10 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
+      {(layout === "docked" || layersOpen) && (
       <LayersPanel
+        floating={layout === "floating"}
         rows={layers}
         selectedId={selected?.id ?? null}
         onSelect={(id) => layerOpsRef.current?.select(id)}
@@ -1481,9 +1491,27 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         onForward={() => layerOpsRef.current?.forward()}
         onBackward={() => layerOpsRef.current?.backward()}
       />
+      )}
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
-      <div className="relative min-w-0 flex-1 overflow-hidden">
+      <div
+        className="relative min-w-0 flex-1 overflow-hidden"
+        // A click on the canvas closes the floating layers panel.
+        onMouseDownCapture={() => setLayersOpen(false)}
+      >
+        {layout === "floating" && (
+          <button
+            onMouseDownCapture={(e) => e.stopPropagation()}
+            onClick={() => setLayersOpen((open) => !open)}
+            aria-pressed={layersOpen}
+            className="absolute top-3 left-3 z-20 flex h-[34px] items-center gap-1.5 rounded-[9px] border border-line2 bg-panel px-[11px] text-xs font-medium text-tx shadow-panel hover:bg-hover"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <path d="M8 2l6 3-6 3-6-3z M2 8.2l6 3 6-3 M2 11.2l6 3 6-3" />
+            </svg>
+            Layers
+          </button>
+        )}
         <Toolbar tool={tool} choice={choice} cutMode={cutMode} onTool={setTool} onCutMode={setCutMode} onCapture={openPicker} />
         {booleanCount >= 2 && (
           <div className="absolute top-[60px] left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[9px] border border-line2 bg-panel p-1 shadow-panel">
