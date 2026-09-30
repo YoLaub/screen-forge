@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:660px;border-radius:14px;background:var(--panel);border:1px solid var(--line2);box-shadow:0 24px 60px rgba(0,0,0,.28),0 2px 6px rgba(0,0,0,.12);font-family:'Geist',-apple-system,sans-serif;font-size:12px;color:var(--tx);overflow:hidden">
+  <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 14px 0 16px;border-bottom:1px solid var(--line)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--tx3);flex:none"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+    <input value="{{ q }}" onChange="{{ onQ }}" onKeyDown="{{ onKey }}" placeholder="Capture which window?" style="flex:1;min-width:0;height:36px;border:0;background:transparent;color:var(--tx);font:500 15px 'Geist',sans-serif;outline:none">
+    <span style="font:500 10.5px 'Geist Mono',monospace;padding:2px 6px;border:1px solid var(--line2);border-radius:5px;color:var(--tx3)">esc</span>
+  </div>
+
+  <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;height:340px">
+      <div style="width:300px;flex:none;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:1px;border-right:1px solid var(--line)">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+          <div style="padding:8px 8px 4px;font-size:10.5px;font-weight:600;color:var(--tx3)">{{ g.app }}</div>
+          <sc-for list="{{ g.wins }}" as="w" hint-placeholder-count="2">
+            <div onClick="{{ w.on }}" onMouseEnter="{{ w.on }}" style="display:flex;align-items:center;gap:9px;height:36px;padding:0 8px;border-radius:7px;background:{{ w.bg }};cursor:default">
+              <span style="width:20px;height:20px;border-radius:5px;background:{{ w.tint }};color:#fff;display:grid;place-items:center;font:600 10px 'Geist',sans-serif;flex:none">{{ w.letter }}</span>
+              <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ w.fg }};font-weight:500">{{ w.title }}</span><span style="font:400 10px 'Geist Mono',monospace;color:var(--tx3)">{{ w.size }}</span></span>
+              <sc-if value="{{ w.active }}"><span style="font:500 11px 'Geist Mono',monospace;color:var(--acc)">↵</span></sc-if>
+            </div>
+          </sc-for>
+        </sc-for>
+        <sc-if value="{{ noMatch }}"><div style="padding:18px 10px;color:var(--tx3);line-height:1.5">No window matches “{{ q }}”.</div></sc-if>
+      </div>
+      <div style="flex:1;min-width:0;padding:16px;display:flex;flex-direction:column;gap:10px">
+        <div style="flex:1;border-radius:9px;border:1px solid var(--line);background:repeating-linear-gradient(135deg,var(--panel2) 0 8px,var(--bg) 8px 16px);display:grid;place-items:center"><span style="font:500 10.5px 'Geist Mono',monospace;color:var(--tx3);background:var(--panel);padding:3px 7px;border-radius:5px">live window preview</span></div>
+        <div style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cur.title }}</span><span style="color:var(--tx3)">{{ cur.app }} · {{ cur.size }}</span></div>
+        <button style="height:32px;border:0;border-radius:8px;background:var(--acc);color:var(--accTx);font:600 12.5px 'Geist',sans-serif;cursor:pointer">Capture to canvas</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;height:340px">
+      <div style="width:300px;flex:none;padding:14px;display:flex;flex-direction:column;gap:14px;border-right:1px solid var(--line)">
+        <span style="height:8px;width:70px;border-radius:4px;background:var(--hover)"></span>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:5px;background:var(--hover)"></span><span style="height:9px;width:170px;border-radius:4px;background:var(--hover)"></span></div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:5px;background:var(--hover)"></span><span style="height:9px;width:130px;border-radius:4px;background:var(--hover)"></span></div>
+        <span style="height:8px;width:56px;border-radius:4px;background:var(--hover);margin-top:6px"></span>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:5px;background:var(--hover)"></span><span style="height:9px;width:150px;border-radius:4px;background:var(--hover)"></span></div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="width:20px;height:20px;border-radius:5px;background:var(--hover)"></span><span style="height:9px;width:110px;border-radius:4px;background:var(--hover)"></span></div>
+      </div>
+      <div style="flex:1;display:grid;place-items:center;color:var(--tx2)"><div style="display:flex;align-items:center;gap:9px"><span style="width:14px;height:14px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc)"></span>Looking for open windows…</div></div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isPerm }}" hint-placeholder-val="{{ false }}">
+    <div style="height:340px;display:grid;place-items:center;padding:0 60px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+        <span style="width:40px;height:40px;border-radius:50%;background:var(--warnSoft);color:var(--warn);display:grid;place-items:center;font:700 18px 'Geist',sans-serif">!</span>
+        <div style="font:600 15px 'Geist',sans-serif">Screen Recording permission needed</div>
+        <div style="color:var(--tx2);line-height:1.55;max-width:400px;text-wrap:pretty">macOS doesn't let ScreenForge see other windows yet. Turn it on in System Settings → Privacy &amp; Security → Screen Recording, then come back here.</div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button style="height:32px;padding:0 14px;border:0;border-radius:8px;background:var(--acc);color:var(--accTx);font:600 12.5px 'Geist',sans-serif;cursor:pointer">Open Screen Recording settings</button>
+          <button style="height:32px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--tx);font:500 12.5px 'Geist',sans-serif;cursor:pointer">Try again</button>
+        </div>
+        <div style="color:var(--tx3);font-size:11px">You can still paste or drop images onto the canvas.</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <div style="height:340px;display:grid;place-items:center;padding:0 60px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center">
+        <div style="width:120px;height:74px;border:1.5px dashed var(--line2);border-radius:9px"></div>
+        <div style="font:600 15px 'Geist',sans-serif">No window to capture.</div>
+        <div style="color:var(--tx2);line-height:1.55;max-width:380px;text-wrap:pretty">Open the app you want to show the agent, then try again. Minimized windows and other Spaces aren't listed.</div>
+        <button style="height:32px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;background:transparent;color:var(--tx);font:500 12.5px 'Geist',sans-serif;cursor:pointer">Refresh list</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="height:38px;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid var(--line);background:var(--panel2);color:var(--tx3);font-size:11px">
+    <span style="display:flex;align-items:center;gap:5px"><span style="font:500 10px 'Geist Mono',monospace">↑↓</span>navigate</span>
+    <span style="display:flex;align-items:center;gap:5px"><span style="font:500 10px 'Geist Mono',monospace">↵</span>capture</span>
+    <span style="flex:1"></span>
+    <span style="display:flex;align-items:center;gap:5px">From anywhere: <span style="font:500 10.5px 'Geist Mono',monospace;padding:1px 5px;border:1px solid var(--line2);border-radius:4px;color:var(--tx2)">⌘⇧X</span> captures the frontmost window</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:700,&quot;height&quot;:460},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;list&quot;,&quot;loading&quot;,&quot;permission&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;list&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const WINS = [
+  { app: 'Safari', letter: 'S', tint: '#2d7cf6', items: [['Acme · Sign in', '1280 × 864'], ['Acme · Pricing', '1280 × 864']] },
+  { app: 'Google Chrome', letter: 'C', tint: '#e0a31b', items: [['Acme · Dashboard', '1440 × 900'], ['localhost:5173 — Settings', '1440 × 900']] },
+  { app: 'Simulator', letter: 'i', tint: '#4a4f5c', items: [['iPhone 16 — Acme', '393 × 852']] },
+];
+class Component extends DCLogic {
+  state = { q: '', i: 0 };
+  renderVals() {
+    const st = this.props.state || 'list', q = this.state.q.toLowerCase();
+    const flat = [];
+    const groups = WINS.map(g => ({ app: g.app, wins: g.items.filter(([t]) => !q || (g.app + ' ' + t).toLowerCase().includes(q)).map(([t, size]) => {
+      const idx = flat.length; flat.push({ app: g.app, title: `${g.app} — ${t}`, size });
+      const active = idx === this.state.i;
+      return { title: t, size, letter: g.letter, tint: g.tint, active, bg: active ? 'var(--accSoft)' : 'transparent', fg: 'var(--tx)', on: () => this.setState({ i: idx }) };
+    }) })).filter(g => g.wins.length);
+    const cur = flat[Math.min(this.state.i, flat.length - 1)] || { title: '—', app: '', size: '' };
+    return {
+      q: this.state.q, onQ: e => this.setState({ q: e.target.value, i: 0 }),
+      onKey: e => { if (e.key === 'ArrowDown') { e.preventDefault(); this.setState(s => ({ i: Math.min(flat.length - 1, s.i + 1) })); } if (e.key === 'ArrowUp') { e.preventDefault(); this.setState(s => ({ i: Math.max(0, s.i - 1) })); } },
+      groups, cur, noMatch: flat.length === 0,
+      isList: st === 'list', isLoading: st === 'loading', isPerm: st === 'permission', isEmpty: st === 'empty',
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -10,6 +10,9 @@ annotations) and act on it locally, without copy-pasting screenshots.**
 
 Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
 file and the spec disagree, this file wins (see the MCP decision below).
+UI reference (redesign, 2026-09-30): `design/screenforge-ui-redesign-mockups/project/ScreenForge Redesign.dc.html`
+and the `SF *.dc.html` files it imports, light and dark themes (`support.js` is the
+prototype runtime, not design). Inventory and wiring audit: `docs/redesign/`.
 
 ## Goals
 v1 is done (tagged `v0.1.0`, 2026-09-24):

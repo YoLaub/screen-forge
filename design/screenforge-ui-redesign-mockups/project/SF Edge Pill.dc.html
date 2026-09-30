@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:100%;height:100%;position:relative;overflow:hidden;font-family:'Geist',-apple-system,sans-serif;font-size:12px;color:var(--tx);background:repeating-linear-gradient(135deg,var(--desk1) 0 10px,var(--desk2) 10px 20px)">
+  <div style="position:absolute;left:0;right:0;top:0;height:24px;background:var(--menubar);display:flex;align-items:center;gap:16px;padding:0 14px;font-size:11.5px;color:var(--menuTx);backdrop-filter:blur(10px)"><span style="font-weight:600">Safari</span><span>File</span><span>Edit</span><span>View</span><span style="flex:1"></span><span style="font-family:'Geist Mono',monospace;font-size:10.5px">14:07</span></div>
+  <div style="position:absolute;left:40px;top:54px;width:560px;height:380px;border-radius:10px;background:#fff;box-shadow:0 18px 50px rgba(0,0,0,.28);overflow:hidden">
+    <div style="height:30px;background:#ebedf0;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid #dcdfe4"><span style="width:10px;height:10px;border-radius:50%;background:#ff5f57"></span><span style="width:10px;height:10px;border-radius:50%;background:#febc2e"></span><span style="width:10px;height:10px;border-radius:50%;background:#28c840"></span><span style="margin-left:130px;width:200px;height:16px;border-radius:5px;background:#fff;font:400 10px 'Geist',sans-serif;color:#8a8f9c;display:grid;place-items:center">localhost:5173/login</span></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:56px">
+      <div style="width:36px;height:36px;border-radius:9px;background:#1d2130"></div>
+      <div style="font:600 16px 'Geist',sans-serif;color:#1d2130">Sign in to Acme</div>
+      <div style="width:260px;height:34px;border:1px solid #d5d9e0;border-radius:6px"></div>
+      <div style="width:260px;height:34px;border:1px solid #d5d9e0;border-radius:6px"></div>
+      <div style="width:260px;height:38px;border-radius:6px;background:#3d5afe"></div>
+    </div>
+    <sc-if value="{{ flashing }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;border:3px solid var(--acc);border-radius:10px;background:rgba(47,199,223,.10)"></div></sc-if>
+  </div>
+
+  <div onMouseEnter="{{ open }}" onMouseLeave="{{ close }}" style="position:absolute;right:0;top:{{ pillTop }}px;display:flex;align-items:center;gap:10px">
+    <sc-if value="{{ hasTip }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:7px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);white-space:nowrap"><span style="font-weight:500">{{ tip.label }}</span><sc-if value="{{ tip.key }}"><span style="font:500 10px 'Geist Mono',monospace;padding:1px 5px;border:1px solid var(--line2);border-radius:4px;color:var(--tx3)">{{ tip.key }}</span></sc-if></div>
+    </sc-if>
+
+    <sc-if value="{{ collapsed }}" hint-placeholder-val="{{ true }}">
+      <div title="ScreenForge" style="width:14px;height:72px;border-radius:9px 0 0 9px;background:var(--panel);border:1px solid var(--line2);border-right:0;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer">
+        <span style="width:4px;height:26px;border-radius:2px;background:linear-gradient(180deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%)"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ expanded }}" hint-placeholder-val="{{ false }}">
+      <div style="width:52px;padding:8px 0 10px;border-radius:14px 0 0 14px;background:var(--panel);border:1px solid var(--line2);border-right:0;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div title="Drag to move" style="width:18px;height:3px;border-radius:2px;background:var(--line2);margin-bottom:6px;cursor:ns-resize"></div>
+        <div style="width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%);position:relative;margin-bottom:6px"><span style="position:absolute;right:5px;bottom:5px;width:10px;height:10px;border-right:2.5px solid #fff;border-bottom:2.5px solid #fff;border-radius:0 0 2px 0"></span><span style="position:absolute;left:5px;top:5px;width:6px;height:6px;border-radius:1.5px;background:#fff"></span></div>
+        <sc-for list="{{ actions }}" as="a" hint-placeholder-count="4">
+          <button onMouseEnter="{{ a.hover }}" onClick="{{ a.on }}" style="width:38px;height:38px;border:0;border-radius:10px;background:{{ a.bg }};color:{{ a.fg }};display:grid;place-items:center;cursor:pointer">
+            <sc-if value="{{ a.iFront }}"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5V3.5c0-.8.7-1.5 1.5-1.5H5M11 2h1.5c.8 0 1.5.7 1.5 1.5V5M14 11v1.5c0 .8-.7 1.5-1.5 1.5H11M5 14H3.5c-.8 0-1.5-.7-1.5-1.5V11"></path><circle cx="8" cy="8" r="2.2"></circle></svg></sc-if>
+            <sc-if value="{{ a.iPick }}"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="3" width="9" height="7" rx="1.5"></rect><rect x="5.5" y="6" width="9" height="7" rx="1.5"></rect></svg></sc-if>
+            <sc-if value="{{ a.iPaste }}"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="11" rx="1.5"></rect><path d="M6 2.5h4v2H6z"></path></svg></sc-if>
+            <sc-if value="{{ a.iOpen }}"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2v12M11 2v12M2 5h12M2 11h12"></path></svg></sc-if>
+            <sc-if value="{{ a.busy }}"><span style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(127,127,127,.3);border-top-color:currentColor;box-sizing:border-box"></span></sc-if>
+          </button>
+        </sc-for>
+        <div style="width:22px;height:1px;background:var(--line2);margin:6px 0"></div>
+        <div onMouseEnter="{{ agentHover }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--okSoft)"></span>
+          <span style="font:600 10px 'Geist Mono',monospace;color:var(--ag)">{{ count }}</span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ captured }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;right:66px;top:{{ toastTop }}px;width:280px;border-radius:12px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);overflow:hidden">
+      <div style="height:96px;background:repeating-linear-gradient(135deg,var(--panel2) 0 8px,var(--bg) 8px 16px);display:grid;place-items:center;border-bottom:1px solid var(--line)"><span style="font:500 10px 'Geist Mono',monospace;color:var(--tx3);background:var(--panel);padding:2px 6px;border-radius:4px">capture thumbnail</span></div>
+      <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:7px"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--ok)"><path d="M3.5 8.5l3 3 6-7"></path></svg><span style="font-weight:600">Captured to canvas</span></div>
+        <div style="color:var(--tx2);line-height:1.4">Safari — localhost:5173/login<br>Added next to “Login screen”</div>
+        <textarea placeholder="Tell the agent what to do with it…" rows="2" style="resize:none;padding:7px 9px;border-radius:7px;border:1px solid var(--agLine);background:var(--agSoft);color:var(--tx);font:400 12px/1.45 'Geist',sans-serif;outline:none"></textarea>
+        <div style="display:flex;gap:6px"><button style="flex:1;height:28px;border:0;border-radius:7px;background:var(--acc);color:var(--accTx);font:600 12px 'Geist',sans-serif;cursor:pointer">Open in ScreenForge</button><button onClick="{{ undo }}" style="height:28px;padding:0 10px;border:1px solid var(--line2);border-radius:7px;background:transparent;color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer">Undo</button></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:560},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;collapsed&quot;,&quot;expanded&quot;,&quot;captured&quot;],&quot;default&quot;:&quot;expanded&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const ACTS = [
+  ['front', 'Capture frontmost window', '⌘⇧X'],
+  ['pick', 'Choose a window…', ''],
+  ['paste', 'Paste image from clipboard', ''],
+  ['open', 'Open ScreenForge canvas', ''],
+];
+class Component extends DCLogic {
+  state = (() => { const s = this.props.state || 'collapsed';
+    return { open: s !== 'collapsed', hover: s === 'expanded' ? 'front' : null, busy: false, captured: s === 'captured', flashing: false }; })();
+  capture() {
+    this.setState({ busy: true, flashing: true, captured: false });
+    setTimeout(() => this.setState({ busy: false, flashing: false, captured: true }), 900);
+  }
+  renderVals() {
+    const s = this.state, top = 170;
+    const tipMap = Object.fromEntries(ACTS.map(a => [a[0], { label: a[1], key: a[2] }]));
+    tipMap.agent = { label: 'Claude Code connected · 4 instructions on canvas', key: '' };
+    return {
+      pillTop: top, toastTop: top + 10,
+      collapsed: !s.open, expanded: s.open,
+      open: () => this.setState({ open: true }),
+      close: () => { if (!s.captured && !s.busy) this.setState({ open: false, hover: null }); else this.setState({ hover: null }); },
+      hasTip: s.open && !!s.hover && !s.captured, tip: tipMap[s.hover] || {},
+      agentHover: () => this.setState({ hover: 'agent' }),
+      actions: ACTS.map(([id]) => { const busy = id === 'front' && s.busy; const hot = s.hover === id;
+        return { iFront: id === 'front' && !busy, iPick: id === 'pick', iPaste: id === 'paste', iOpen: id === 'open', busy,
+          bg: id === 'front' ? 'var(--acc)' : hot ? 'var(--hover)' : 'transparent', fg: id === 'front' ? 'var(--accTx)' : 'var(--tx2)',
+          hover: () => this.setState({ hover: id }), on: () => { if (id === 'front') this.capture(); } }; }),
+      count: '4', captured: s.captured, flashing: s.flashing,
+      undo: () => this.setState({ captured: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>
