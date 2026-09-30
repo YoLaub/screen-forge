@@ -61,8 +61,12 @@ import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Too
 import { DRAWING, SHAPE_STYLE } from "./drawingDefaults";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
+import EmptyCanvas from "./EmptyCanvas";
 import { fitTransform, nextZoom, stepZoom, zoomKey } from "./viewport";
 import ZoomControl from "./ZoomControl";
+import { failureToast } from "../toast/model";
+import Toasts from "../toast/Toasts";
+import { useToasts } from "../toast/useToasts";
 
 // Serialize the ScreenForge props with every object in canvas.json.
 FabricObject.customProperties = SF_PROPS;
@@ -479,7 +483,10 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
-  const [status, setStatus] = useState("");
+  // push and dismiss keep their identity, so the canvas effect can hold on to push.
+  const { toasts, push, dismiss } = useToasts();
+  // The empty-canvas message only shows once the saved canvas has loaded.
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [selected, setSelected] = useState<InspectorNode | null>(null);
   const [others, setOthers] = useState<{ id: string; name: string; type: string }[]>([]);
   // Set inside the canvas effect, used by inspector edits and the toolbar.
@@ -516,7 +523,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   useEffect(() => {
     if (!controls) return;
     controls.current = {
-      exportPng: () => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`)),
+      exportPng: () => exportRef.current().catch((error) => push(failureToast("Export failed", error))),
     };
     return () => {
       controls.current = null;
@@ -559,6 +566,9 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
     fabricRef.current = canvas;
     styleSelection(canvas, currentTheme());
     let loading = true;
+    // Set on cleanup: in development React mounts the canvas twice, and the first,
+    // already destroyed canvas fails to load. That failure is not the user's.
+    let disposed = false;
 
     const autosave = createAutosave(
       async () => {
@@ -575,7 +585,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         onSavedRef.current?.(new Date());
       },
       AUTOSAVE_DELAY_MS,
-      (error) => setStatus(`Save failed: ${String(error)}`),
+      (error) => push(failureToast("Save failed", error)),
     );
     // Undo history: a snapshot of the canvas after each change, grouped over
     // 300 ms so that a whole drag is one step.
@@ -775,13 +785,13 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const target = exportTarget(picked.map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName);
       const png = renderExport(canvas, target, picked);
       if (!png) {
-        setStatus("Nothing to export");
+        push({ kind: "warn", title: "Nothing to export", message: "There is no visible element on the canvas yet." });
         return;
       }
       const path = await pickPngPath(target.fileName);
       if (!path) return;
       await exportPng(path, png);
-      setStatus(`Exported ${path.split("/").pop()}`);
+      push({ kind: "ok", title: "Exported", message: path.split("/").pop() });
     };
 
     // Copies go right above their originals and become the selection.
@@ -980,7 +990,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       },
       run: (action) => {
         const targets = menuTargets;
-        const fail = (error: unknown) => setStatus(`${action} failed: ${String(error)}`);
+        const fail = (error: unknown) => push(failureToast(`Could not ${action}`, error));
         if (action === "copy") copy(targets);
         if (action === "paste") paste(menuPoint ?? undefined).catch(fail);
         if (action === "duplicate") duplicate(targets).catch(fail);
@@ -1043,7 +1053,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
           ordered.map((o) => `<svg xmlns="http://www.w3.org/2000/svg">${o.toSVG()}</svg>`),
         );
         if (!result) {
-          setStatus(`${op}: nothing is left`);
+          push({ kind: "warn", title: "Nothing left", message: `${BOOLEAN_OPS.find((b) => b.op === op)!.label} of these shapes is empty.` });
           return;
         }
         const bottom = ordered[0];
@@ -1072,11 +1082,14 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         redrawArrows();
         refreshLayers();
         history.record(snapshot());
+        if (!disposed) setLoadState("ready");
       })
       .catch((error) => {
+        if (disposed) return;
         // Saving now would mirror an empty canvas and delete every node on disk.
         autosave.block();
-        setStatus(`Load failed, saving is disabled to protect your files: ${String(error)}`);
+        setLoadState("failed");
+        push(failureToast("Load failed, saving is off", error, true));
       })
       .finally(() => {
         loading = false;
@@ -1142,7 +1155,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       }
       if (e.metaKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
-        flatten(selectedNodes()).catch((error) => setStatus(`Merge failed: ${String(error)}`));
+        flatten(selectedNodes()).catch((error) => push(failureToast("Could not merge layers", error)));
         return;
       }
       if (e.metaKey && e.key.toLowerCase() === "c") {
@@ -1151,7 +1164,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       }
       if (e.metaKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        if (!edit) duplicate().catch((error) => setStatus(`Duplicate failed: ${String(error)}`));
+        if (!edit) duplicate().catch((error) => push(failureToast("Could not duplicate", error)));
         return;
       }
       if (edit) {
@@ -1323,7 +1336,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         afterEditRef.current();
         return;
       }
-      setStatus("Nothing to cut: draw over a capture");
+      push({ kind: "warn", title: "Nothing to cut", message: "Draw over a capture to cut a piece out." });
     };
     canvas.on("mouse:down", ({ e }) => {
       if (toolRef.current !== "cut" || spaceDown) return;
@@ -1345,7 +1358,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       if (preview) canvas.remove(preview);
       setTool("select");
       if (points.length < 2) return;
-      cutCapture(mode, outline).catch((error) => setStatus(`Cut failed: ${String(error)}`));
+      cutCapture(mode, outline).catch((error) => push(failureToast("Cut failed", error)));
     });
 
     // Pen: click for a corner, drag for a smooth point; click the first point to
@@ -1526,12 +1539,12 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       if (!file) {
         if (clipboard) {
           e.preventDefault();
-          paste().catch((error) => setStatus(`Paste failed: ${String(error)}`));
+          paste().catch((error) => push(failureToast("Paste failed", error)));
         }
         return;
       }
       e.preventDefault();
-      addCapture(file, canvas.getVpCenter()).catch((error) => setStatus(`Paste failed: ${String(error)}`));
+      addCapture(file, canvas.getVpCenter()).catch((error) => push(failureToast("Paste failed", error)));
     };
     // Requires dragDropEnabled: false on the Tauri window, otherwise Tauri swallows drops.
     const onDragOver = (e: DragEvent) => e.preventDefault();
@@ -1539,7 +1552,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const file = firstImageFile(e.dataTransfer?.files);
       if (!file) return;
       e.preventDefault();
-      addCapture(file, canvas.getScenePoint(e)).catch((error) => setStatus(`Drop failed: ${String(error)}`));
+      addCapture(file, canvas.getScenePoint(e)).catch((error) => push(failureToast("Drop failed", error)));
     };
 
     const resize = new ResizeObserver(() => {
@@ -1555,9 +1568,9 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
     const unlistenShortcut = onShortcutCapture(
       ({ window, png_base64 }) =>
         addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window))
-          .then(() => setStatus(`Captured ${captureName(window)}`))
-          .catch((error) => setStatus(`Capture failed: ${String(error)}`)),
-      (message) => setStatus(`Capture failed: ${message}`),
+          .then(() => push({ kind: "ok", title: "Captured", message: captureName(window) }))
+          .catch((error) => push(failureToast("Capture failed", error))),
+      (message) => push(failureToast("Capture failed", message)),
     );
 
     return () => {
@@ -1569,6 +1582,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       container.removeEventListener("dragover", onDragOver);
       container.removeEventListener("drop", onDrop);
       fabricRef.current = null;
+      disposed = true;
       unlistenTheme();
       canvas.dispose();
     };
@@ -1588,7 +1602,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const granted = await ensureScreenCaptureAccess();
       setPicker({ windows: granted ? await listWindows() : [], permissionMissing: !granted });
     } catch (error) {
-      setStatus(`Window list failed: ${String(error)}`);
+      push(failureToast("Could not list windows", error));
     }
   }
 
@@ -1598,7 +1612,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const png = await captureWindow(w.id);
       await addImageRef.current(`data:image/png;base64,${png}`, captureName(w));
     } catch (error) {
-      setStatus(`Capture failed: ${String(error)}`);
+      push(failureToast("Capture failed", error));
     }
   }
 
@@ -1643,6 +1657,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         // A click on the canvas closes the floating layers panel.
         onMouseDownCapture={() => setLayersOpen(false)}
       >
+        {loadState === "ready" && layers.length === 0 && <EmptyCanvas onCapture={openPicker} />}
         <InstructionPins pins={pins} calloutsEnabled={!selected} onPick={(id) => layerOpsRef.current?.select(id)} />
         {layout === "floating" && (
           <button
@@ -1700,7 +1715,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
             onCancel={() => setPicker(null)}
           />
         )}
-        <div className="absolute bottom-2 right-3 z-10 text-xs text-tx3">{status}</div>
+        <Toasts toasts={toasts} onClose={dismiss} />
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild onContextMenu={(e) => menuOpsRef.current && setMenu(menuOpsRef.current.open(e.nativeEvent))}>
             <div
