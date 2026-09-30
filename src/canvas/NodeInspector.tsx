@@ -24,24 +24,24 @@ interface Props {
 }
 
 const input =
-  "w-full rounded border border-neutral-300 px-2 py-1 text-sm focus:border-neutral-500 focus:outline-none";
+  "w-full rounded border border-line2 bg-panel2 px-2 py-1 text-sm text-tx focus:border-acc focus:outline-none";
 
 export default function NodeInspector({ node, others, onChange }: Props) {
   const nameOf = (id: string) => others.find((o) => o.id === id)?.name ?? id;
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-neutral-200 bg-white p-3 text-sm">
-      <div className="text-xs uppercase tracking-wide text-neutral-400">
+    <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel p-3 text-sm">
+      <div className="text-xs uppercase tracking-wide text-tx3">
         {{ capture: "Capture", vector_drawing: "Drawing", frame: "Frame" }[node.kind]} · {node.id}
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="font-medium text-neutral-700">Name</span>
+        <span className="font-medium text-tx">Name</span>
         <input className={input} value={node.name} onChange={(e) => onChange({ name: e.target.value })} />
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="font-medium text-neutral-700">Instructions for the agent</span>
+        <span className="font-medium text-tx">Instructions for the agent</span>
         <textarea
           className={`${input} min-h-32 resize-y`}
           value={node.instructions}
@@ -55,16 +55,16 @@ export default function NodeInspector({ node, others, onChange }: Props) {
       )}
 
       <section className="flex flex-col gap-2">
-        <span className="font-medium text-neutral-700">Links</span>
+        <span className="font-medium text-tx">Links</span>
         {node.links.map((link, i) => {
           const target = nameOf(link.target_node);
           return (
-            <div key={`${link.target_node}-${i}`} className="flex flex-col gap-1 rounded border border-neutral-200 p-2">
+            <div key={`${link.target_node}-${i}`} className="flex flex-col gap-1 rounded border border-line p-2">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-700">→ {target}</span>
+                <span className="text-tx">→ {target}</span>
                 <button
                   aria-label={`Remove link to ${target}`}
-                  className="text-neutral-400 hover:text-red-600"
+                  className="text-tx3 hover:text-warn"
                   onClick={() => onChange({ links: removeLink(node.links, i) })}
                 >
                   ✕
@@ -88,7 +88,7 @@ export default function NodeInspector({ node, others, onChange }: Props) {
           );
         })}
         <label className="flex flex-col gap-1">
-          <span className="text-neutral-500">Link to</span>
+          <span className="text-tx2">Link to</span>
           <select
             className={input}
             value=""

@@ -54,7 +54,9 @@ import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
 import { type CutMode, type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { DRAWING } from "./drawingDefaults";
 import { TEXT_FONT, withTextFont } from "./textFont";
+import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
 import { nextZoom } from "./viewport";
 
 // Serialize the ScreenForge props with every object in canvas.json.
@@ -98,9 +100,13 @@ function renderRegion(
   box: Box,
   multiplier = renderScale(box, RENDER_MAX_SIDE),
   filter?: (obj: object) => boolean,
+  // Content, not theme: the agent sees the same image in light and dark mode.
+  background: string = DRAWING.renderBackground,
 ): string {
   const viewport = canvas.viewportTransform.slice() as TMat2D;
+  const shown = canvas.backgroundColor;
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+  canvas.backgroundColor = background;
   try {
     const png = canvas.toDataURL({
       format: "png",
@@ -113,6 +119,7 @@ function renderRegion(
     });
     return dataUrlToBase64(png);
   } finally {
+    canvas.backgroundColor = shown;
     canvas.setViewportTransform(viewport);
   }
 }
@@ -233,7 +240,7 @@ function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
 }
 
 /** Link arrows and frame names are display only: rebuilt from node props, never saved. */
-function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
+function drawOverlays(canvas: Canvas, previous: FabricObject[], theme: Theme): FabricObject[] {
   previous.forEach((a) => canvas.remove(a));
   const nodes = canvas.getObjects().filter(isNode).filter(isShown);
   const byId = new Map(nodes.map((n) => [n.sfId, n]));
@@ -249,7 +256,7 @@ function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] 
       originY: "bottom",
       fontSize: 14,
       fontFamily: TEXT_FONT,
-      fill: "#737373",
+      fill: theme.tx2,
     });
     canvas.add(label);
     overlays.push(label);
@@ -263,7 +270,7 @@ function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] 
       const [b1, b2] = arrowHead(line.from, line.to, 12);
       const d = `M ${line.from.x} ${line.from.y} L ${line.to.x} ${line.to.y} M ${b1.x} ${b1.y} L ${line.to.x} ${line.to.y} L ${b2.x} ${b2.y}`;
       // Added last, so arrows stay above frames and the nodes they link.
-      const arrow = new Path(d, { ...display, fill: "", stroke: "#64748b", strokeWidth: 2 });
+      const arrow = new Path(d, { ...display, fill: "", stroke: theme.link, strokeWidth: 2 });
       canvas.add(arrow);
       overlays.push(arrow);
     }
@@ -305,7 +312,7 @@ const CUT_MODES: { mode: CutMode; label: string; hint: string }[] = [
   { mode: "ellipse", label: "Ellipse", hint: "Drag to cut out an ellipse; Shift for a circle" },
 ];
 
-const WIREFRAME = { fill: "#e5e7eb", stroke: "#6b7280", strokeWidth: 1, strokeUniform: true };
+const WIREFRAME = { fill: DRAWING.shapeFill, stroke: DRAWING.shapeStroke, strokeWidth: 1, strokeUniform: true };
 const TOP_LEFT = { originX: "left", originY: "top" } as const;
 /** Size of a shape placed with a click instead of a drag. */
 const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
@@ -323,7 +330,7 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
 /** The shape a drag from `start` to `end` draws with `tool` (text is placed on click). */
 type ShapeTool = Exclude<DrawingTool, "text" | "pen">;
 
-const PEN_STROKE = { fill: "", stroke: "#111827", strokeWidth: 2, strokeUniform: true };
+const PEN_STROKE = { fill: "", stroke: DRAWING.pen, strokeWidth: 2, strokeUniform: true };
 const ROUND_ENDS = { strokeLineJoin: "round", strokeLineCap: "round" } as const;
 
 /** An arrow node's path; its head is sized from the stroke width. */
@@ -364,18 +371,19 @@ function pathFrom(anchors: Anchor[], closed: boolean): Path {
 
 /** Points and handle lines shown while drawing or editing a path. */
 function anchorMarkers(anchors: Anchor[], zoom: number, withHandles: boolean): FabricObject[] {
+  const { sel, panel } = currentTheme();
   const size = 8 / zoom;
   const markers: FabricObject[] = [];
   for (const a of anchors) {
     if (withHandles) {
       for (const h of [a.in, a.out]) {
         if (!h) continue;
-        markers.push(new Line([a.x, a.y, h.x, h.y], { ...DISPLAY_ONLY, stroke: "#3B82F6", strokeWidth: 1 / zoom }));
-        markers.push(new Circle({ ...DISPLAY_ONLY, left: h.x, top: h.y, radius: size / 2, fill: "#3B82F6" }));
+        markers.push(new Line([a.x, a.y, h.x, h.y], { ...DISPLAY_ONLY, stroke: sel, strokeWidth: 1 / zoom }));
+        markers.push(new Circle({ ...DISPLAY_ONLY, left: h.x, top: h.y, radius: size / 2, fill: sel }));
       }
     }
     markers.push(
-      new Rect({ ...DISPLAY_ONLY, left: a.x, top: a.y, width: size, height: size, fill: "#ffffff", stroke: "#3B82F6", strokeWidth: 1 / zoom }),
+      new Rect({ ...DISPLAY_ONLY, left: a.x, top: a.y, width: size, height: size, fill: panel, stroke: sel, strokeWidth: 1 / zoom }),
     );
   }
   return markers;
@@ -384,7 +392,7 @@ function anchorMarkers(anchors: Anchor[], zoom: number, withHandles: boolean): F
 function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): FabricObject {
   if (tool === "line") {
     const to = snapLine(start, end, shift);
-    return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
+    return new Line([start.x, start.y, to.x, to.y], { stroke: DRAWING.line, strokeWidth: 2, strokeUniform: true });
   }
   if (tool === "arrow") {
     return arrowFrom(start, snapLine(start, end, shift), PEN_STROKE);
@@ -393,7 +401,7 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
   const at = { ...TOP_LEFT, left: box.left, top: box.top };
   switch (tool) {
     case "frame":
-      return new Rect({ ...at, width: box.width, height: box.height, fill: "#ffffff", stroke: "#d4d4d4", strokeWidth: 1 });
+      return new Rect({ ...at, width: box.width, height: box.height, fill: DRAWING.frameFill, stroke: DRAWING.frameStroke, strokeWidth: 1 });
     case "rect":
       return new Rect({ ...WIREFRAME, ...at, width: box.width, height: box.height });
     case "ellipse":
@@ -401,7 +409,7 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
     case "polygon":
       return new Polygon(polygonPoints(3, box), { ...WIREFRAME });
     case "cross":
-      return Object.assign(new Path(crossPath(box), { ...PEN_STROKE, stroke: "#dc2626", strokeLineCap: "round" }), { sfShape: "cross" });
+      return Object.assign(new Path(crossPath(box), { ...PEN_STROKE, stroke: DRAWING.cross, strokeLineCap: "round" }), { sfShape: "cross" });
   }
 }
 
@@ -453,7 +461,7 @@ export default function CanvasView({ root }: { root: string }) {
     const canvas = new Canvas(canvasElRef.current!, {
       width: container.clientWidth,
       height: container.clientHeight,
-      backgroundColor: "#f5f5f5",
+      backgroundColor: currentTheme().canvas,
       preserveObjectStacking: true,
       // Let right-clicks reach the context menu (Fabric swallows them by default).
       stopContextMenu: false,
@@ -493,8 +501,12 @@ export default function CanvasView({ root }: { root: string }) {
 
     let overlays: FabricObject[] = [];
     const redrawArrows = () => {
-      overlays = drawOverlays(canvas, overlays);
+      overlays = drawOverlays(canvas, overlays, currentTheme());
     };
+    const unlistenTheme = onThemeChange((theme) => {
+      canvas.backgroundColor = theme.canvas;
+      redrawArrows();
+    });
     // Arrow objects come and go on every redraw: only node changes trigger a save.
     const refreshLayers = () => {
       const nodes = canvas.getObjects().filter(isNode);
@@ -768,14 +780,7 @@ export default function CanvasView({ root }: { root: string }) {
       const box = unionBox(ordered.map((o) => o.getBoundingRect()), 0)!;
       const scale = flattenScale(box, ordered.filter((o) => o.sfKind === "capture").map((o) => o.scaleX || 1));
       // Only the merged nodes, on a transparent background.
-      const background = canvas.backgroundColor;
-      canvas.backgroundColor = "";
-      let png: string;
-      try {
-        png = renderRegion(canvas, box, scale, (o) => ordered.includes(o as NodeObject));
-      } finally {
-        canvas.backgroundColor = background;
-      }
+      const png = renderRegion(canvas, box, scale, (o) => ordered.includes(o as NodeObject), "");
       const image = await FabricImage.fromURL(`data:image/png;base64,${png}`);
       const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
       tagAsNode(canvas, image, "capture", nextNodeName("capture", names, "Merged"));
@@ -1051,7 +1056,7 @@ export default function CanvasView({ root }: { root: string }) {
       if (t === "select" || t === "pen" || t === "cut" || spaceDown) return;
       const start = canvas.getScenePoint(e);
       if (t === "text") {
-        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: TEXT_FONT, fill: "#111827" });
+        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: TEXT_FONT, fill: DRAWING.text });
         canvas.add(text);
         finishShape(text, "text");
         text.enterEditing();
@@ -1100,7 +1105,7 @@ export default function CanvasView({ root }: { root: string }) {
       if (cut.preview) canvas.remove(cut.preview);
       const [first] = cut.points;
       const last = cut.points[cut.points.length - 1];
-      const style = { ...DISPLAY_ONLY, fill: "", stroke: "#2563eb", strokeWidth: 1.5 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()] };
+      const style = { ...DISPLAY_ONLY, fill: "", stroke: currentTheme().sel, strokeWidth: 1.5 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()] };
       const outline = cutOutline(cut);
       cut.preview =
         cut.mode === "line"
@@ -1399,6 +1404,7 @@ export default function CanvasView({ root }: { root: string }) {
       container.removeEventListener("dragover", onDragOver);
       container.removeEventListener("drop", onDrop);
       fabricRef.current = null;
+      unlistenTheme();
       canvas.dispose();
     };
   }, [root]);
@@ -1467,28 +1473,28 @@ export default function CanvasView({ root }: { root: string }) {
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {/* Wraps instead of sliding under the inspector when the canvas is narrow. */}
         <div className="pointer-events-none absolute left-3 right-3 top-3 z-10 flex flex-wrap items-start gap-2 [&>*]:pointer-events-auto">
-          <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+          <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
             {TOOLBAR.map(({ id, label, key, hint }) => (
               <button
                 key={id}
                 onClick={() => setTool(id)}
                 aria-pressed={tool === id}
                 title={`${hint} (${key})`}
-                className={`whitespace-nowrap px-3 py-1.5 text-sm ${tool === id ? "bg-neutral-900 text-white" : "hover:bg-neutral-50"}`}
+                className={`whitespace-nowrap px-3 py-1.5 text-sm ${tool === id ? "bg-acc text-acc-tx" : "hover:bg-hover"}`}
               >
                 {label}
               </button>
             ))}
           </div>
           {tool === "cut" && (
-            <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+            <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
               {CUT_MODES.map(({ mode, label, hint }) => (
                 <button
                   key={mode}
                   onClick={() => setCutMode(mode)}
                   aria-pressed={cutMode === mode}
                   title={hint}
-                  className={`px-3 py-1.5 text-sm ${cutMode === mode ? "bg-blue-600 text-white" : "hover:bg-neutral-50"}`}
+                  className={`px-3 py-1.5 text-sm ${cutMode === mode ? "bg-acc text-acc-tx" : "hover:bg-hover"}`}
                 >
                   {label}
                 </button>
@@ -1498,25 +1504,25 @@ export default function CanvasView({ root }: { root: string }) {
           <button
             onClick={openPicker}
             title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
-            className="whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+            className="whitespace-nowrap rounded-md border border-line2 bg-panel px-3 py-1.5 text-sm shadow-sm hover:bg-hover"
           >
             Capture window
           </button>
           <button
             onClick={() => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`))}
             title="Save a PNG of the selected frame or elements, or of the whole canvas when nothing is selected"
-            className="whitespace-nowrap rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
+            className="whitespace-nowrap rounded-md border border-line2 bg-panel px-3 py-1.5 text-sm shadow-sm hover:bg-hover"
           >
             {exportTo.label}
           </button>
           {booleanCount >= 2 && (
-            <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
+            <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
               {BOOLEAN_OPS.map(({ op, label }) => (
                 <button
                   key={op}
                   onClick={() => layerOpsRef.current?.combine(op)}
                   title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
-                  className="px-3 py-1.5 text-sm hover:bg-neutral-50"
+                  className="px-3 py-1.5 text-sm hover:bg-hover"
                 >
                   {label}
                 </button>
@@ -1533,7 +1539,7 @@ export default function CanvasView({ root }: { root: string }) {
             onCancel={() => setPicker(null)}
           />
         )}
-        <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
+        <div className="absolute bottom-2 right-3 z-10 text-xs text-tx3">{status}</div>
         <ContextMenu.Root>
           <ContextMenu.Trigger asChild onContextMenu={(e) => menuOpsRef.current && setMenu(menuOpsRef.current.open(e.nativeEvent))}>
             <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
@@ -1541,19 +1547,19 @@ export default function CanvasView({ root }: { root: string }) {
             </div>
           </ContextMenu.Trigger>
           <ContextMenu.Portal>
-            <ContextMenu.Content className="z-40 min-w-48 rounded-md border border-neutral-200 bg-white p-1 text-sm shadow-lg">
+            <ContextMenu.Content className="z-40 min-w-48 rounded-md border border-line bg-panel p-1 text-sm shadow-lg">
               {menuItems(menu.targets, menu.hasClipboard).map((item, i) =>
                 item === "separator" ? (
-                  <ContextMenu.Separator key={i} className="my-1 h-px bg-neutral-200" />
+                  <ContextMenu.Separator key={i} className="my-1 h-px bg-line" />
                 ) : (
                   <ContextMenu.Item
                     key={item.id}
                     disabled={!item.enabled}
                     onSelect={() => menuOpsRef.current?.run(item.id)}
-                    className="flex cursor-default items-center justify-between gap-6 rounded px-2 py-1 outline-none data-[disabled]:text-neutral-300 data-[highlighted]:bg-neutral-100"
+                    className="flex cursor-default items-center justify-between gap-6 rounded px-2 py-1 outline-none data-[disabled]:text-tx3 data-[highlighted]:bg-hover"
                   >
                     {item.label}
-                    {item.shortcut && <span className="text-xs text-neutral-400">{item.shortcut}</span>}
+                    {item.shortcut && <span className="text-xs text-tx3">{item.shortcut}</span>}
                   </ContextMenu.Item>
                 ),
               )}

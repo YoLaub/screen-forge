@@ -147,3 +147,10 @@
   with Fabric.
 - The owner's canvas was read through `screenforge-mcp` to see the bug
   (node PNG vs full text) before touching code.
+
+## theme-tokens (2026-09-30)
+- The dark canvas made the default drawing colors (dark navy pen, arrow and text)
+  nearly invisible. They are content saved for the agent, so they were kept out of
+  the theme; picking defaults readable on both backgrounds is a design question.
+- The repo color guard caught its own doc comment (example class names): a guard
+  scanning source text needs examples phrased so they do not match.
