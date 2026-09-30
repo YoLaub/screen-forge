@@ -48,3 +48,19 @@ describe("duplicateProps on serialized objects", () => {
     expect(copy).not.toHaveProperty("fill");
   });
 });
+
+describe("duplicateProps with groups", () => {
+  const inGroup = (id: string): SfProps => ({ ...node(id, id), sfGroup: { id: "grp_1", name: "Card" } });
+
+  it("makes copies of several members of a group a new group", () => {
+    const [a, b] = duplicateProps([inGroup("vec_a"), inGroup("vec_b")], newId);
+    expect(a.sfGroup!.id).not.toBe("grp_1");
+    expect(a.sfGroup).toEqual(b.sfGroup);
+    expect(a.sfGroup!.name).toBe("Card copy");
+  });
+
+  it("keeps a lone copied member in its group", () => {
+    const [a] = duplicateProps([inGroup("vec_a")], newId);
+    expect(a.sfGroup).toEqual({ id: "grp_1", name: "Card" });
+  });
+});

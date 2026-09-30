@@ -12,7 +12,7 @@ interface Props {
   onBackward: () => void;
 }
 
-const KIND_ICON = { frame: "▢", capture: "▣", vector_drawing: "◇" } as const;
+const KIND_ICON = { frame: "▢", capture: "▣", vector_drawing: "◇", group: "⧉" } as const;
 
 const iconButton = "w-6 shrink-0 text-center text-neutral-400 hover:text-neutral-900";
 

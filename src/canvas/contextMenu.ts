@@ -4,9 +4,11 @@ import type { Box, Pt } from "./geometry";
 export interface MenuTargets {
   count: number;
   allLocked: boolean;
+  /** At least one target belongs to a group. */
+  grouped: boolean;
 }
 
-export type MenuAction = "copy" | "paste" | "duplicate" | "lock" | "forward" | "backward";
+export type MenuAction = "copy" | "paste" | "duplicate" | "group" | "ungroup" | "lock" | "forward" | "backward";
 
 export interface MenuItem {
   id: MenuAction;
@@ -22,6 +24,9 @@ export function menuItems(targets: MenuTargets, hasClipboard: boolean): (MenuIte
     { id: "copy", label: "Copy", shortcut: "⌘C", enabled: any },
     { id: "paste", label: "Paste", shortcut: "⌘V", enabled: hasClipboard },
     { id: "duplicate", label: "Duplicate", shortcut: "⌘D", enabled: any },
+    "separator",
+    { id: "group", label: "Group", shortcut: "⌘G", enabled: targets.count > 1 },
+    { id: "ungroup", label: "Ungroup", shortcut: "⇧⌘G", enabled: targets.grouped },
     "separator",
     { id: "lock", label: any && targets.allLocked ? "Unlock" : "Lock", enabled: any },
     "separator",
