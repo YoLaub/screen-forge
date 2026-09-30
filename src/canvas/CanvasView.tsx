@@ -55,7 +55,7 @@ import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeR
 import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
 import Toolbar from "./Toolbar";
 import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Tool, rememberInGroup, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
-import { DRAWING } from "./drawingDefaults";
+import { DRAWING, SHAPE_STYLE } from "./drawingDefaults";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
 import { nextZoom } from "./viewport";
@@ -294,7 +294,6 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
 
 
 
-const WIREFRAME = { fill: DRAWING.shapeFill, stroke: DRAWING.shapeStroke, strokeWidth: 1, strokeUniform: true };
 const TOP_LEFT = { originX: "left", originY: "top" } as const;
 /** Size of a shape placed with a click instead of a drag. */
 const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
@@ -346,7 +345,7 @@ const DISPLAY_ONLY = { selectable: false, evented: false, excludeFromExport: tru
 
 /** A pen path through `anchors`; a closed one gets the wireframe fill. */
 function pathFrom(anchors: Anchor[], closed: boolean): Path {
-  const path = new Path(toSvgPath(anchors, closed), closed ? { ...WIREFRAME } : { ...PEN_STROKE });
+  const path = new Path(toSvgPath(anchors, closed), closed ? { ...SHAPE_STYLE } : { ...PEN_STROKE });
   Object.assign(path, { sfAnchors: anchors, sfClosed: closed });
   return path;
 }
@@ -385,11 +384,11 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
     case "frame":
       return new Rect({ ...at, width: box.width, height: box.height, fill: DRAWING.frameFill, stroke: DRAWING.frameStroke, strokeWidth: 1 });
     case "rect":
-      return new Rect({ ...WIREFRAME, ...at, width: box.width, height: box.height });
+      return new Rect({ ...SHAPE_STYLE, ...at, width: box.width, height: box.height });
     case "ellipse":
-      return new Ellipse({ ...WIREFRAME, ...at, rx: box.width / 2, ry: box.height / 2 });
+      return new Ellipse({ ...SHAPE_STYLE, ...at, rx: box.width / 2, ry: box.height / 2 });
     case "polygon":
-      return new Polygon(polygonPoints(3, box), { ...WIREFRAME });
+      return new Polygon(polygonPoints(3, box), { ...SHAPE_STYLE });
     case "cross":
       return Object.assign(new Path(crossPath(box), { ...PEN_STROKE, stroke: DRAWING.cross, strokeLineCap: "round" }), { sfShape: "cross" });
   }
