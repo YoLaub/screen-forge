@@ -32,6 +32,13 @@ describe("menuItems groups", () => {
   });
 });
 
+describe("menuItems merge", () => {
+  it("merges two elements or more", () => {
+    expect(enabled(menuItems({ count: 1, allLocked: false, grouped: false }, false)).merge).toBe(false);
+    expect(enabled(menuItems({ count: 2, allLocked: false, grouped: false }, false)).merge).toBe(true);
+  });
+});
+
 describe("pasteDelta", () => {
   const copied = { left: 100, top: 100, width: 50, height: 30 };
 
