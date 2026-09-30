@@ -32,6 +32,8 @@ const light = {
   shadow: "0 1px 2px rgba(17,20,32,.06),0 6px 20px rgba(17,20,32,.08)",
   // Not in the mockup: the veil behind dialogs.
   scrim: "rgba(17,20,32,.28)",
+  // Instruction pins: a canvas-colored ring, then a drop shadow (mockup).
+  pinShadow: "0 0 0 2px #e6e8ec,0 2px 6px rgba(0,0,0,.25)",
 };
 
 export type Theme = typeof light;
@@ -63,6 +65,7 @@ const dark: Theme = {
   link: "#6d7382",
   shadow: "0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.45)",
   scrim: "rgba(0,0,0,.5)",
+  pinShadow: "0 0 0 2px #0b0c10,0 2px 6px rgba(0,0,0,.25)",
 };
 
 export const THEMES = { light, dark };
