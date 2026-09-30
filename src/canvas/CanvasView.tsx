@@ -413,7 +413,21 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
   }
 }
 
-export default function CanvasView({ root }: { root: string }) {
+/** What the app shell drives on the canvas (the Export button lives in the title bar). */
+export interface CanvasControls {
+  exportPng: () => Promise<void>;
+}
+
+interface CanvasViewProps {
+  root: string;
+  /** Called after every successful save. */
+  onSaved?: (at: Date) => void;
+  /** Label of the Export action for the current selection. */
+  onExportLabel?: (label: string) => void;
+  controls?: { current: CanvasControls | null };
+}
+
+export default function CanvasView({ root, onSaved, onExportLabel, controls }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -433,6 +447,18 @@ export default function CanvasView({ root }: { root: string }) {
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
   const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
   const exportRef = useRef<() => Promise<void>>(async () => {});
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+  useEffect(() => onExportLabel?.(exportTo.label), [exportTo.label, onExportLabel]);
+  useEffect(() => {
+    if (!controls) return;
+    controls.current = {
+      exportPng: () => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`)),
+    };
+    return () => {
+      controls.current = null;
+    };
+  }, [controls]);
   const menuOpsRef = useRef<{
     open: (e: MouseEvent) => { targets: MenuTargets; hasClipboard: boolean };
     run: (action: MenuAction) => void;
@@ -481,7 +507,7 @@ export default function CanvasView({ root }: { root: string }) {
         );
         const canvasPng = extent && renderRegion(canvas, extent);
         await saveCanvas(root, JSON.stringify(canvas.toObject()), canvasPng, exports);
-        setStatus(`Saved ${new Date().toLocaleTimeString()}`);
+        onSavedRef.current?.(new Date());
       },
       AUTOSAVE_DELAY_MS,
       (error) => setStatus(`Save failed: ${String(error)}`),
@@ -1507,13 +1533,6 @@ export default function CanvasView({ root }: { root: string }) {
             className="whitespace-nowrap rounded-md border border-line2 bg-panel px-3 py-1.5 text-sm shadow-sm hover:bg-hover"
           >
             Capture window
-          </button>
-          <button
-            onClick={() => exportRef.current().catch((error) => setStatus(`Export failed: ${String(error)}`))}
-            title="Save a PNG of the selected frame or elements, or of the whole canvas when nothing is selected"
-            className="whitespace-nowrap rounded-md border border-line2 bg-panel px-3 py-1.5 text-sm shadow-sm hover:bg-hover"
-          >
-            {exportTo.label}
           </button>
           {booleanCount >= 2 && (
             <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">

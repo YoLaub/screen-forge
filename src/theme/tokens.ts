@@ -78,3 +78,9 @@ export function cssVariables(theme: Partial<Theme>): string {
     .map(([name, value]) => `--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${value};`)
     .join(" ");
 }
+
+/** Brand colors, the same in both themes (logo). */
+export const BRAND = {
+  gradient: "linear-gradient(135deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%)",
+  mark: "#ffffff",
+};
