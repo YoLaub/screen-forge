@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LayerIcon } from "./layers";
 import type { Tool } from "./tools";
 
 /** 16 px stroke icons from the mockup (SF Workspace.dc.html), drawn in currentColor. */
@@ -41,3 +42,30 @@ export const CHEVRON = (
     <path d="M1.5 2.8L4 5.3l2.5-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
   </svg>
 );
+
+const small = (children: ReactNode, strokeWidth = 1.4) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={strokeWidth}>
+    {children}
+  </svg>
+);
+
+/** 14 px layer row icons (mockup layers panel; ellipse, polygon, line, arrow, path, group follow the toolbar set). */
+export const LAYER_ICONS: Record<LayerIcon, ReactNode> = {
+  frame: small(<path d="M5 2v12M11 2v12M2 5h12M2 11h12" />),
+  capture: small(
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <circle cx="6" cy="7" r="1.2" />
+      <path d="M2.5 12l4-3.5 3 2.5 2-1.5 2.5 2" />
+    </>,
+  ),
+  rect: small(<rect x="2.5" y="3.5" width="11" height="9" rx="1.5" />),
+  ellipse: small(<circle cx="8" cy="8" r="5.5" />),
+  polygon: small(<path d="M8 2.5l5.5 4-2 6.5h-7l-2-6.5z" />),
+  line: small(<path d="M3 13L13 3" />, 1.5),
+  arrow: small(<path d="M3 13L13 3M7 3h6v6" />, 1.5),
+  cross: small(<path d="M4 4l8 8M12 4l-8 8" />, 1.5),
+  path: small(<path d="M3 13l1-3.6 7-7 2.6 2.6-7 7z" />),
+  text: small(<path d="M3.5 3.5h9M8 3.5v9" />, 1.5),
+  group: small(<path d="M8 2l6 3-6 3-6-3z M2 8.2l6 3 6-3 M2 11.2l6 3 6-3" />),
+};

@@ -4,11 +4,14 @@ import type { LayerRow } from "./layers";
 import LayersPanel from "./LayersPanel";
 
 const rows: LayerRow[] = [
-  { item: { id: "frm", name: "Login", kind: "frame", hidden: false, locked: false }, depth: 0 },
-  { item: { id: "btn", name: "Button", kind: "vector_drawing", parent: "frm", hidden: true, locked: true }, depth: 1 },
+  { item: { id: "frm", name: "Login", kind: "frame", icon: "frame", hidden: false, locked: false }, depth: 0 },
+  {
+    item: { id: "btn", name: "Button", kind: "vector_drawing", icon: "arrow", instructed: true, parent: "frm", hidden: true, locked: true },
+    depth: 1,
+  },
 ];
 
-function setup(selectedId: string | null = null) {
+function setup(selectedId: string | null = null, shown: LayerRow[] = rows) {
   const handlers = {
     onSelect: vi.fn(),
     onRename: vi.fn(),
@@ -17,7 +20,7 @@ function setup(selectedId: string | null = null) {
     onForward: vi.fn(),
     onBackward: vi.fn(),
   };
-  render(<LayersPanel rows={rows} selectedId={selectedId} {...handlers} />);
+  render(<LayersPanel rows={shown} selectedId={selectedId} {...handlers} />);
   return handlers;
 }
 
@@ -52,5 +55,22 @@ describe("LayersPanel", () => {
     const h = setup("btn");
     fireEvent.click(screen.getAllByRole("button", { name: "Send backward" })[1]);
     expect(h.onBackward).toHaveBeenCalled();
+  });
+
+  it("shows each element's icon and marks the ones with instructions", () => {
+    setup();
+    expect(screen.getByText("Button").closest("li")!.querySelector("[data-icon]")).toHaveAttribute("data-icon", "arrow");
+    expect(screen.getAllByTitle("Has instructions for the agent")).toHaveLength(1);
+  });
+
+  it("counts the elements that have instructions", () => {
+    setup();
+    expect(screen.getByText(/of 2 elements have instructions/)).toHaveTextContent("1 of 2 elements have instructions");
+  });
+
+  it("explains what will be listed when there is nothing yet", () => {
+    setup(null, []);
+    expect(screen.getByText("No layers yet. Captures, frames and annotations will be listed here.")).toBeInTheDocument();
+    expect(screen.queryByText(/elements have instructions/)).not.toBeInTheDocument();
   });
 });

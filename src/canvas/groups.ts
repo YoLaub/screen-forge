@@ -32,6 +32,7 @@ export function withGroupRows(items: LayerItem[]): LayerItem[] {
         id: group.id,
         name: group.name,
         kind: "group",
+        icon: "group",
         parent: item.parent,
         hidden: members(group.id).every((m) => m.hidden),
         locked: members(group.id).every((m) => m.locked),
