@@ -53,7 +53,8 @@ import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeIn
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
-import { type CutMode, type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import Toolbar from "./Toolbar";
+import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Tool, rememberInGroup, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { DRAWING } from "./drawingDefaults";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
@@ -291,26 +292,7 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
   Object.assign(obj, props);
 }
 
-const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
-  { id: "select", label: "Select", key: "V", hint: "Select and move (Shift keeps the move horizontal or vertical); ⌘D duplicates the selection" },
-  { id: "frame", label: "Frame", key: "F", hint: "A named screen: everything placed inside it belongs to it" },
-  { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
-  { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
-  { id: "line", label: "Line", key: "L", hint: "Drag to draw; Shift snaps to 45°" },
-  { id: "arrow", label: "Arrow", key: "A", hint: "Drag from tail to tip; Shift snaps to 45°" },
-  { id: "cross", label: "Cross", key: "X", hint: "Drag to draw; Shift keeps it square" },
-  { id: "polygon", label: "Polygon", key: "no key", hint: "Drag to draw" },
-  { id: "pen", label: "Pen", key: "P", hint: "Click for corners, drag for curves; click the first point to close, Enter to finish; double-click a path to edit it" },
-  { id: "text", label: "Text", key: "T", hint: "Click to type" },
-  { id: "cut", label: "Cut", key: "C", hint: "Cut a part out of a capture, then move it" },
-];
 
-const CUT_MODES: { mode: CutMode; label: string; hint: string }[] = [
-  { mode: "lasso", label: "Lasso", hint: "Draw freehand around the part to cut out" },
-  { mode: "line", label: "Line", hint: "Draw a line across a capture to split it in two" },
-  { mode: "rect", label: "Rectangle", hint: "Drag a box around the part to cut out" },
-  { mode: "ellipse", label: "Ellipse", hint: "Drag to cut out an ellipse; Shift for a circle" },
-];
 
 const WIREFRAME = { fill: DRAWING.shapeFill, stroke: DRAWING.shapeStroke, strokeWidth: 1, strokeUniform: true };
 const TOP_LEFT = { originX: "left", originY: "top" } as const;
@@ -440,6 +422,9 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
   const [cutMode, setCutMode] = useState<CutMode>("lasso");
+  // Which shape and line tool the grouped toolbar buttons show.
+  const [choice, setChoice] = useState<GroupChoice>({ shape: "rect", line: "line" });
+  useEffect(() => setChoice((c) => rememberInGroup(c, tool)), [tool]);
   const cutModeRef = useRef<CutMode>("lasso");
   cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
@@ -1497,58 +1482,21 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
       <div className="relative min-w-0 flex-1 overflow-hidden">
-        {/* Wraps instead of sliding under the inspector when the canvas is narrow. */}
-        <div className="pointer-events-none absolute left-3 right-3 top-3 z-10 flex flex-wrap items-start gap-2 [&>*]:pointer-events-auto">
-          <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
-            {TOOLBAR.map(({ id, label, key, hint }) => (
+        <Toolbar tool={tool} choice={choice} cutMode={cutMode} onTool={setTool} onCutMode={setCutMode} onCapture={openPicker} />
+        {booleanCount >= 2 && (
+          <div className="absolute top-[60px] left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[9px] border border-line2 bg-panel p-1 shadow-panel">
+            {BOOLEAN_OPS.map(({ op, label }) => (
               <button
-                key={id}
-                onClick={() => setTool(id)}
-                aria-pressed={tool === id}
-                title={`${hint} (${key})`}
-                className={`whitespace-nowrap px-3 py-1.5 text-sm ${tool === id ? "bg-acc text-acc-tx" : "hover:bg-hover"}`}
+                key={op}
+                onClick={() => layerOpsRef.current?.combine(op)}
+                title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
+                className="h-[26px] rounded-md px-[9px] text-xs font-medium text-tx hover:bg-hover"
               >
                 {label}
               </button>
             ))}
           </div>
-          {tool === "cut" && (
-            <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
-              {CUT_MODES.map(({ mode, label, hint }) => (
-                <button
-                  key={mode}
-                  onClick={() => setCutMode(mode)}
-                  aria-pressed={cutMode === mode}
-                  title={hint}
-                  className={`px-3 py-1.5 text-sm ${cutMode === mode ? "bg-acc text-acc-tx" : "hover:bg-hover"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            onClick={openPicker}
-            title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
-            className="whitespace-nowrap rounded-md border border-line2 bg-panel px-3 py-1.5 text-sm shadow-sm hover:bg-hover"
-          >
-            Capture window
-          </button>
-          {booleanCount >= 2 && (
-            <div className="flex overflow-hidden rounded-md border border-line2 bg-panel shadow-sm">
-              {BOOLEAN_OPS.map(({ op, label }) => (
-                <button
-                  key={op}
-                  onClick={() => layerOpsRef.current?.combine(op)}
-                  title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
-                  className="px-3 py-1.5 text-sm hover:bg-hover"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
         {picker && (
           <WindowPicker
             windows={picker.windows}
