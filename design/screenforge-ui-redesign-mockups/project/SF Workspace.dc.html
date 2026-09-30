@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"></helmet>
+<div data-sf-root="{{ uid }}" tabIndex="0" onKeyDown="{{ onKey }}" style="width:100%;height:100%;display:flex;flex-direction:column;background:var(--bg);color:var(--tx);font-family:'Geist',-apple-system,sans-serif;font-size:12px;outline:none;overflow:hidden;position:relative;user-select:none">
+
+<div style="height:44px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px 0 14px;border-bottom:1px solid var(--line);background:var(--bg)">
+  <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+  <div style="width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%);position:relative;margin-left:6px;flex:none"><span style="position:absolute;right:4px;bottom:4px;width:8px;height:8px;border-right:2px solid #fff;border-bottom:2px solid #fff;border-radius:0 0 2px 0"></span><span style="position:absolute;left:4px;top:4px;width:5px;height:5px;border-radius:1px;background:#fff"></span></div>
+  <button title="Change folder" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--tx);font:600 13px 'Geist',sans-serif;cursor:pointer;white-space:nowrap;flex:none" style-hover="background:var(--hover)">
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--tx2)"><path d="M2 4.5c0-.6.4-1 1-1h3.2l1.5 1.6H13c.6 0 1 .4 1 1V12c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1z"></path></svg>
+    acme-dashboard
+    <svg width="9" height="9" viewBox="0 0 8 8" style="color:var(--tx3)"><path d="M1.5 2.8L4 5.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg>
+  </button>
+  <div style="display:flex;align-items:center;gap:5px;color:var(--tx3);font-size:11.5px;white-space:nowrap;flex:none"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 8.5l3 3 6-7"></path></svg>Saved 14:03</div>
+  <div style="flex:1"></div>
+  <sc-if value="{{ agentOn }}" hint-placeholder-val="{{ true }}">
+    <button title="Connect AI" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 9px;border:1px solid var(--line2);border-radius:999px;background:var(--panel);color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer" style-hover="border-color:var(--ok)">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--okSoft)"></span>Claude Code<span style="color:var(--tx3);font-weight:400">{{ agentNote }}</span>
+    </button>
+  </sc-if>
+  <sc-if value="{{ agentOff }}" hint-placeholder-val="{{ false }}">
+    <button style="display:flex;align-items:center;gap:7px;height:28px;padding:0 11px;border:1px solid var(--acc);border-radius:999px;background:transparent;color:var(--acc);font:600 12px 'Geist',sans-serif;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;border:1.5px solid var(--acc);box-sizing:border-box"></span>Connect AI</button>
+  </sc-if>
+  <button style="display:flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:0;border-radius:7px;background:var(--acc);color:var(--accTx);font:600 12px 'Geist',sans-serif;cursor:pointer">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 10V2.5M4.8 5.5L8 2.3l3.2 3.2M2.5 10.5v2c0 .6.4 1 1 1h9c.6 0 1-.4 1-1v-2"></path></svg>{{ exportLabel }}
+  </button>
+</div>
+
+<div style="flex:1;display:flex;min-height:0;position:relative">
+
+  <div style="width:236px;flex:none;display:{{ lp.display }};position:{{ lp.pos }};left:0;top:0;bottom:0;z-index:30;box-shadow:{{ lp.shadow }};flex-direction:column;background:var(--panel);border-right:1px solid var(--line)">
+    <div style="height:38px;flex:none;display:flex;align-items:center;gap:4px;padding:0 8px 0 14px">
+      <span style="font-weight:600;font-size:12px;flex:1">Layers</span>
+      <button title="Bring forward (⌘])" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--tx2);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 12.5V3.5M4.5 7L8 3.5 11.5 7"></path></svg></button>
+      <button title="Send backward (⌘[)" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--tx2);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3.5v9M4.5 9L8 12.5 11.5 9"></path></svg></button>
+    </div>
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:1px;padding-bottom:8px">
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:18px 14px;color:var(--tx3);line-height:1.5;text-wrap:pretty">No layers yet. Captures, frames and annotations will be listed here.</div>
+      </sc-if>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+        <div onClick="{{ r.onClick }}" onMouseEnter="{{ r.onEnter }}" onMouseLeave="{{ r.onLeave }}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 {{ r.pad }}px;margin:0 6px;border-radius:6px;background:{{ r.bg }};color:{{ r.fg }};opacity:{{ r.rowOp }};cursor:default">
+          <span style="width:10px;flex:none;display:grid;place-items:center;color:var(--tx3)"><sc-if value="{{ r.tFrame }}"><svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 2.5L4 5l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></sc-if></span>
+          <span style="width:16px;height:16px;flex:none;display:grid;place-items:center;color:{{ r.ic }}">
+            <sc-if value="{{ r.tFrame }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 2v12M11 2v12M2 5h12M2 11h12"></path></svg></sc-if>
+            <sc-if value="{{ r.tCap }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><circle cx="6" cy="7" r="1.2"></circle><path d="M2.5 12l4-3.5 3 2.5 2-1.5 2.5 2"></path></svg></sc-if>
+            <sc-if value="{{ r.tRect }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"></rect></svg></sc-if>
+            <sc-if value="{{ r.tCross }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l8 8M12 4l-8 8"></path></svg></sc-if>
+            <sc-if value="{{ r.tText }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 3.5h9M8 3.5v9"></path></svg></sc-if>
+          </span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:{{ r.fw }}">{{ r.name }}</span>
+          <sc-if value="{{ r.hasInstr }}"><span title="Has instructions for the agent" style="width:6px;height:6px;flex:none;border-radius:50%;background:var(--ag);margin-right:2px"></span></sc-if>
+          <button onClick="{{ r.lock }}" title="Lock" style="width:20px;height:20px;flex:none;border:0;padding:0;background:transparent;color:var(--tx3);display:grid;place-items:center;opacity:{{ r.lockOp }};cursor:pointer"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg></button>
+          <button onClick="{{ r.eye }}" title="Hide / show" style="width:20px;height:20px;flex:none;border:0;padding:0;background:transparent;color:var(--tx3);display:grid;place-items:center;opacity:{{ r.eyeOp }};cursor:pointer"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle><sc-if value="{{ r.hidden }}"><path d="M2.5 2.5l11 11"></path></sc-if></svg></button>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ hasEls }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:none;border-top:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:8px;color:var(--tx2);font-size:11.5px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--ag)"></span><span><b style="color:var(--tx);font-weight:600">{{ covered }}</b> of {{ total }} elements have instructions</span>
+      </div>
+    </sc-if>
+  </div>
+
+  <div data-sf-canvas="{{ uid }}" onClick="{{ deselect }}" style="flex:1;min-width:0;position:relative;overflow:hidden;background-color:var(--canvas);background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);background-size:20px 20px">
+
+    <sc-if value="{{ hasEls }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;left:0;top:0;width:980px;height:540px;transform-origin:0 0;transform:{{ worldTf }}">
+      <div onClick="{{ pick.frameA }}" style="position:absolute;left:0;top:-20px;font:500 12px 'Geist',sans-serif;color:{{ flbl.frameA }};white-space:nowrap">{{ nm.frameA }}</div>
+      <div onClick="{{ pick.frameA }}" style="position:absolute;left:0;top:0;width:420px;height:300px;background:var(--frame);border:1px solid var(--line2);box-sizing:border-box;opacity:{{ op.frameA }}"></div>
+      <div onClick="{{ pick.capA }}" style="position:absolute;left:20px;top:20px;width:380px;height:260px;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.16);opacity:{{ op.capA }}">
+        <div style="height:24px;background:#ebedf0;display:flex;align-items:center;gap:5px;padding:0 9px;border-bottom:1px solid #dcdfe4"><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="margin-left:90px;width:140px;height:12px;border-radius:4px;background:#fff"></span></div>
+        <div style="position:absolute;left:176px;top:44px;width:28px;height:28px;border-radius:8px;background:#1d2130"></div>
+        <div style="position:absolute;left:0;right:0;top:82px;text-align:center;font:600 13px 'Geist',sans-serif;color:#1d2130">Sign in to Acme</div>
+        <div style="position:absolute;left:80px;top:106px;width:220px;height:28px;border:1px solid #d5d9e0;border-radius:5px;box-sizing:border-box;padding:0 8px;display:flex;align-items:center;font-size:10px;color:#9aa0ab">Email</div>
+        <div style="position:absolute;left:80px;top:142px;width:220px;height:28px;border:1px solid #d5d9e0;border-radius:5px;box-sizing:border-box;padding:0 8px;display:flex;align-items:center;font-size:10px;color:#9aa0ab">Password</div>
+        <div style="position:absolute;left:80px;top:182px;width:220px;height:32px;border-radius:5px;background:#3d5afe;display:grid;place-items:center;font:600 11px 'Geist',sans-serif;color:#fff">Sign in</div>
+        <div style="position:absolute;left:80px;top:226px;width:220px;text-align:center;font-size:10px;color:#3d5afe">Forgot password?</div>
+      </div>
+      <div onClick="{{ pick.rect1 }}" style="position:absolute;left:92px;top:196px;width:236px;height:44px;border:2px solid #ff4d2e;border-radius:6px;box-sizing:border-box;opacity:{{ op.rect1 }}"></div>
+      <div onClick="{{ pick.cross1 }}" style="position:absolute;left:170px;top:241px;width:80px;height:22px;opacity:{{ op.cross1 }}"><svg width="80" height="22" viewBox="0 0 80 22"><path d="M3 3L77 19M77 3L3 19" stroke="#ff4d2e" stroke-width="2.2" stroke-linecap="round"></path></svg></div>
+      <div onClick="{{ pick.tx1 }}" style="position:absolute;left:334px;top:206px;font:600 13px 'Geist',sans-serif;color:#ff4d2e;white-space:nowrap;opacity:{{ op.tx1 }}">too small?</div>
+
+      <div onClick="{{ pick.frameB }}" style="position:absolute;left:520px;top:-20px;font:500 12px 'Geist',sans-serif;color:{{ flbl.frameB }};white-space:nowrap">{{ nm.frameB }}</div>
+      <div onClick="{{ pick.frameB }}" style="position:absolute;left:520px;top:0;width:460px;height:300px;background:var(--frame);border:1px solid var(--line2);box-sizing:border-box;opacity:{{ op.frameB }}"></div>
+      <div onClick="{{ pick.capB }}" style="position:absolute;left:540px;top:20px;width:420px;height:260px;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.16);opacity:{{ op.capB }}">
+        <div style="height:24px;background:#ebedf0;display:flex;align-items:center;gap:5px;padding:0 9px;border-bottom:1px solid #dcdfe4"><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span></div>
+        <div style="position:absolute;left:0;top:24px;bottom:0;width:80px;background:#1d2130;display:flex;flex-direction:column;gap:9px;padding:14px 12px;box-sizing:border-box"><span style="height:6px;width:40px;border-radius:3px;background:#5b6275"></span><span style="height:6px;width:48px;border-radius:3px;background:#3a4052"></span><span style="height:6px;width:36px;border-radius:3px;background:#3a4052"></span><span style="height:6px;width:44px;border-radius:3px;background:#3a4052"></span></div>
+        <div style="position:absolute;left:96px;top:40px;display:flex;gap:10px"><div style="width:94px;height:52px;border-radius:6px;background:#f2f4f7;padding:9px;box-sizing:border-box;display:flex;flex-direction:column;gap:7px"><span style="height:5px;width:40px;border-radius:3px;background:#c9cdd5"></span><span style="height:10px;width:56px;border-radius:3px;background:#1d2130"></span></div><div style="width:94px;height:52px;border-radius:6px;background:#f2f4f7;padding:9px;box-sizing:border-box;display:flex;flex-direction:column;gap:7px"><span style="height:5px;width:34px;border-radius:3px;background:#c9cdd5"></span><span style="height:10px;width:48px;border-radius:3px;background:#1d2130"></span></div><div style="width:94px;height:52px;border-radius:6px;background:#f2f4f7;padding:9px;box-sizing:border-box;display:flex;flex-direction:column;gap:7px"><span style="height:5px;width:44px;border-radius:3px;background:#c9cdd5"></span><span style="height:10px;width:40px;border-radius:3px;background:#1d2130"></span></div></div>
+        <div style="position:absolute;left:96px;top:104px;width:302px;height:138px;border-radius:6px;background:#f2f4f7;display:flex;align-items:flex-end;gap:12px;padding:14px 18px;box-sizing:border-box"><span style="flex:1;height:40%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:62%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:48%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:80%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:58%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:92%;background:#3d5afe;border-radius:3px 3px 0 0"></span><span style="flex:1;height:70%;background:#3d5afe;border-radius:3px 3px 0 0"></span></div>
+      </div>
+
+      <div onClick="{{ pick.capC }}" style="position:absolute;left:0;top:360px;width:280px;height:180px;border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.16);opacity:{{ op.capC }}">
+        <div style="height:24px;background:#ebedf0;display:flex;align-items:center;gap:5px;padding:0 9px;border-bottom:1px solid #dcdfe4"><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span><span style="width:8px;height:8px;border-radius:50%;background:#cfd3d9"></span></div>
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;font-size:10px;color:#1d2130">
+          <div style="font:600 12px 'Geist',sans-serif">Account settings</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">Email notifications<span style="width:22px;height:12px;border-radius:6px;background:#3d5afe"></span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center">Two-factor auth<span style="width:22px;height:12px;border-radius:6px;background:#d5d9e0"></span></div>
+          <div style="align-self:flex-end;padding:6px 10px;border-radius:5px;background:#e5484d;color:#fff;font-weight:600">Delete account</div>
+        </div>
+      </div>
+
+      <svg width="980" height="540" viewBox="0 0 980 540" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none;color:var(--link)"><path d="M328 218 C 420 218, 430 150, 514 150" fill="none" stroke="currentColor" stroke-width="1.5"></path><polygon points="520,150 510,145 510,155" fill="currentColor"></polygon></svg>
+      <div style="position:absolute;left:396px;top:168px;padding:2px 6px;border-radius:5px;background:var(--panel);border:1px solid var(--line2);font:500 10px 'Geist Mono',monospace;color:var(--tx2)">onClick</div>
+      <sc-if value="{{ isCut }}" hint-placeholder-val="{{ false }}">
+        <svg width="980" height="540" viewBox="0 0 980 540" style="position:absolute;left:0;top:0;overflow:visible;pointer-events:none"><path d="M330 420 C 350 380, 440 378, 470 410 S 460 500, 400 505 S 310 470, 330 420 Z" style="fill:var(--accSoft);stroke:var(--sel)" stroke-width="1.5" stroke-dasharray="5 4"></path></svg>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:{{ sb.left }}px;top:{{ sb.top }}px;width:{{ sb.width }}px;height:{{ sb.height }}px;border:1.5px solid var(--sel);box-sizing:border-box;pointer-events:none">
+        <span style="position:absolute;left:-4.5px;top:-4.5px;width:7px;height:7px;background:#fff;border:1.5px solid var(--sel)"></span>
+        <span style="position:absolute;right:-4.5px;top:-4.5px;width:7px;height:7px;background:#fff;border:1.5px solid var(--sel)"></span>
+        <span style="position:absolute;left:-4.5px;bottom:-4.5px;width:7px;height:7px;background:#fff;border:1.5px solid var(--sel)"></span>
+        <span style="position:absolute;right:-4.5px;bottom:-4.5px;width:7px;height:7px;background:#fff;border:1.5px solid var(--sel)"></span>
+        <span style="position:absolute;left:50%;top:100%;margin-top:7px;transform:translateX(-50%);padding:1px 5px;border-radius:4px;background:var(--sel);color:var(--accTx);font:500 10px 'Geist Mono',monospace;white-space:nowrap">{{ sb.dims }}</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isMulti }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ stop }}" style="position:absolute;left:{{ sb.left }}px;top:{{ sb.barTop }}px;display:flex;align-items:center;gap:2px;padding:4px;border-radius:9px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);white-space:nowrap">
+        <span style="padding:0 8px 0 6px;color:var(--tx3);font-size:11px">2 shapes</span>
+        <button style="height:26px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer" style-hover="background:var(--hover)">Union</button>
+        <button style="height:26px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer" style-hover="background:var(--hover)">Subtract</button>
+        <button style="height:26px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer" style-hover="background:var(--hover)">Intersect</button>
+        <button style="height:26px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer" style-hover="background:var(--hover)">Exclude</button>
+      </div>
+    </sc-if>
+
+    <sc-for list="{{ badges }}" as="b" hint-placeholder-count="0">
+      <div onMouseEnter="{{ b.enter }}" onMouseLeave="{{ b.leave }}" onClick="{{ b.pick }}" title="Instructions for the agent" style="position:absolute;left:{{ b.x }}px;top:{{ b.y }}px;width:20px;height:20px;border-radius:10px 10px 10px 3px;background:var(--ag);color:var(--agTx);display:grid;place-items:center;font:600 10.5px 'Geist',sans-serif;box-shadow:0 0 0 2px var(--canvas),0 2px 6px rgba(0,0,0,.25);cursor:pointer">{{ b.n }}</div>
+    </sc-for>
+    <sc-if value="{{ hasCallout }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:{{ co.x }}px;top:{{ co.y }}px;width:250px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--agLine);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:6px;pointer-events:none">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--ag);font-size:11px"><span style="width:7px;height:7px;background:var(--ag);transform:rotate(45deg)"></span>For the agent · {{ co.name }}</div>
+        <div style="font-size:12px;line-height:1.45;color:var(--tx);text-wrap:pretty">{{ co.text }}</div>
+      </div>
+    </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;display:grid;place-items:center">
+        <div style="width:360px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+          <div style="width:220px;height:130px;border:1.5px dashed var(--line2);border-radius:12px;display:grid;place-items:center;color:var(--tx3)"><svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="3" width="12" height="10" rx="1.5"></rect><circle cx="6" cy="7" r="1.2"></circle><path d="M2.5 12l4-3.5 3 2.5 2-1.5 2.5 2"></path></svg></div>
+          <div style="font:600 15px 'Geist',sans-serif">Show the agent something</div>
+          <div style="color:var(--tx2);line-height:1.5;text-wrap:pretty">Capture any window on your Mac, or paste / drop an image here. Then annotate it and tell the agent what to do.</div>
+          <div style="display:flex;gap:8px">
+            <button style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px;border:0;border-radius:8px;background:var(--acc);color:var(--accTx);font:600 12.5px 'Geist',sans-serif;cursor:pointer">Capture window</button>
+            <div style="display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;color:var(--tx2)">or paste <span style="font:500 10.5px 'Geist Mono',monospace;padding:1px 5px;border:1px solid var(--line2);border-radius:4px;color:var(--tx3)">⌘V</span></div>
+          </div>
+          <div style="color:var(--tx3);font-size:11px">Tip: <span style="font:500 10.5px 'Geist Mono',monospace">⌘⇧X</span> captures the frontmost window from anywhere.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toggleLayers }}" style="position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:6px;height:34px;padding:0 11px;border:1px solid var(--line2);border-radius:9px;background:var(--panel);color:var(--tx);box-shadow:var(--shadow);font:500 12px 'Geist',sans-serif;cursor:pointer"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2l6 3-6 3-6-3z M2 8.2l6 3 6-3 M2 11.2l6 3 6-3"></path></svg>Layers</button>
+    </sc-if>
+
+    <div onClick="{{ stop }}" style="position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:4px;border-radius:11px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);z-index:10">
+      <button onClick="{{ t.select.on }}" title="Select (V)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.select.bg }};color:{{ t.select.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M4 2.5l8.5 5.2-3.9 1L6.8 12.5z"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">V</span></button>
+      <button onClick="{{ t.frame.on }}" title="Frame (F)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.frame.bg }};color:{{ t.frame.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2v12M11 2v12M2 5h12M2 11h12"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">F</span></button>
+      <span style="width:1px;height:20px;background:var(--line2);margin:0 4px"></span>
+      <div style="position:relative;display:flex">
+        <button onClick="{{ t.shape.on }}" title="{{ t.shape.title }}" style="position:relative;width:34px;height:32px;border:0;border-radius:7px 0 0 7px;background:{{ t.shape.bg }};color:{{ t.shape.fg }};display:grid;place-items:center;cursor:pointer">
+          <sc-if value="{{ t.shape.isRect }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"></rect></svg></sc-if>
+          <sc-if value="{{ t.shape.isEllipse }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"></circle></svg></sc-if>
+          <sc-if value="{{ t.shape.isPoly }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 2.5l5.5 4-2 6.5h-7l-2-6.5z"></path></svg></sc-if>
+          <span style="position:absolute;right:2px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">{{ t.shape.key }}</span>
+        </button>
+        <button onClick="{{ t.shape.fly }}" title="More shapes" style="width:12px;height:32px;border:0;border-radius:0 7px 7px 0;background:{{ t.shape.bg }};color:var(--tx3);display:grid;place-items:center;cursor:pointer;padding:0"><svg width="7" height="7" viewBox="0 0 8 8"><path d="M1.5 2.8L4 5.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+        <sc-if value="{{ flyShape }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:0;top:40px;width:180px;padding:4px;border-radius:9px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);display:flex;flex-direction:column">
+            <sc-for list="{{ shapeMenu }}" as="m" hint-placeholder-count="3">
+              <button onClick="{{ m.on }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border:0;border-radius:6px;background:{{ m.bg }};color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer;text-align:left" style-hover="background:var(--hover)"><span style="flex:1">{{ m.label }}</span><span style="font:500 10.5px 'Geist Mono',monospace;color:var(--tx3)">{{ m.key }}</span></button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <div style="position:relative;display:flex">
+        <button onClick="{{ t.line.on }}" title="{{ t.line.title }}" style="position:relative;width:34px;height:32px;border:0;border-radius:7px 0 0 7px;background:{{ t.line.bg }};color:{{ t.line.fg }};display:grid;place-items:center;cursor:pointer">
+          <sc-if value="{{ t.line.isLine }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 13L13 3"></path></svg></sc-if>
+          <sc-if value="{{ t.line.isArrow }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 13L13 3M7 3h6v6"></path></svg></sc-if>
+          <span style="position:absolute;right:2px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">{{ t.line.key }}</span>
+        </button>
+        <button onClick="{{ t.line.fly }}" title="Line or arrow" style="width:12px;height:32px;border:0;border-radius:0 7px 7px 0;background:{{ t.line.bg }};color:var(--tx3);display:grid;place-items:center;cursor:pointer;padding:0"><svg width="7" height="7" viewBox="0 0 8 8"><path d="M1.5 2.8L4 5.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg></button>
+        <sc-if value="{{ flyLine }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:0;top:40px;width:180px;padding:4px;border-radius:9px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);display:flex;flex-direction:column">
+            <sc-for list="{{ lineMenu }}" as="m" hint-placeholder-count="2">
+              <button onClick="{{ m.on }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border:0;border-radius:6px;background:{{ m.bg }};color:var(--tx);font:500 12px 'Geist',sans-serif;cursor:pointer;text-align:left" style-hover="background:var(--hover)"><span style="flex:1">{{ m.label }}</span><span style="font:500 10.5px 'Geist Mono',monospace;color:var(--tx3)">{{ m.key }}</span></button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <button onClick="{{ t.cross.on }}" title="Cross (X)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.cross.bg }};color:{{ t.cross.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">X</span></button>
+      <button onClick="{{ t.pen.on }}" title="Pen (P)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.pen.bg }};color:{{ t.pen.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3 13l1-3.6 7-7 2.6 2.6-7 7z M9.6 3.8l2.6 2.6"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">P</span></button>
+      <button onClick="{{ t.text.on }}" title="Text (T)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.text.bg }};color:{{ t.text.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 3.5h9M8 3.5v9.5"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">T</span></button>
+      <span style="width:1px;height:20px;background:var(--line2);margin:0 4px"></span>
+      <button onClick="{{ t.cut.on }}" title="Cut (C)" style="position:relative;width:34px;height:32px;border:0;border-radius:7px;background:{{ t.cut.bg }};color:{{ t.cut.fg }};display:grid;place-items:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="4.8" cy="11.8" r="2"></circle><circle cx="11.2" cy="11.8" r="2"></circle><path d="M6.2 10.4L12 2.5M9.8 10.4L4 2.5"></path></svg><span style="position:absolute;right:3px;bottom:1px;font:500 8px 'Geist Mono',monospace;color:var(--tx3)">C</span></button>
+      <span style="width:1px;height:20px;background:var(--line2);margin:0 4px"></span>
+      <button title="Capture window" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 12px 0 10px;border:0;border-radius:7px;background:var(--acc);color:var(--accTx);font:600 12px 'Geist',sans-serif;cursor:pointer;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5V3.5c0-.8.7-1.5 1.5-1.5H5M11 2h1.5c.8 0 1.5.7 1.5 1.5V5M14 11v1.5c0 .8-.7 1.5-1.5 1.5H11M5 14H3.5c-.8 0-1.5-.7-1.5-1.5V11"></path><circle cx="8" cy="8" r="2.2"></circle></svg>Capture window</button>
+    </div>
+
+    <sc-if value="{{ isCut }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ stop }}" style="position:absolute;left:50%;top:60px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border-radius:9px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow);white-space:nowrap;z-index:9">
+        <div style="display:flex;gap:2px;padding:2px;border-radius:7px;background:var(--panel2)">
+          <sc-for list="{{ cutModes }}" as="c" hint-placeholder-count="3">
+            <button onClick="{{ c.on }}" style="height:24px;padding:0 10px;border:0;border-radius:5px;background:{{ c.bg }};color:{{ c.fg }};box-shadow:{{ c.sh }};font:500 11.5px 'Geist',sans-serif;cursor:pointer">{{ c.label }}</button>
+          </sc-for>
+        </div>
+        <span style="color:var(--tx3);font-size:11.5px">{{ cutHint }}</span>
+      </div>
+    </sc-if>
+
+    <div onClick="{{ stop }}" style="position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--panel);border:1px solid var(--line2);box-shadow:var(--shadow)">
+      <button onClick="{{ zoomOut }}" title="Zoom out (⌘−)" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--tx2);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="12" height="12" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10"></path></svg></button>
+      <span style="width:42px;text-align:center;font:500 11.5px 'Geist Mono',monospace;color:var(--tx)">{{ zoomPct }}</span>
+      <button onClick="{{ zoomIn }}" title="Zoom in (⌘+)" style="width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--tx2);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="12" height="12" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path d="M3 8h10M8 3v10"></path></svg></button>
+      <span style="width:1px;height:16px;background:var(--line2);margin:0 3px"></span>
+      <button onClick="{{ fit }}" title="Zoom to fit (⇧1)" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--tx);font:500 11.5px 'Geist',sans-serif;cursor:pointer" style-hover="background:var(--hover)">Fit all<span style="font:500 10px 'Geist Mono',monospace;color:var(--tx3)">⇧1</span></button>
+    </div>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ stop }}" style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--warn);box-shadow:var(--shadow);white-space:nowrap">
+        <span style="width:18px;height:18px;border-radius:50%;background:var(--warnSoft);color:var(--warn);display:grid;place-items:center;font:700 11px 'Geist',sans-serif">!</span>
+        <span style="font-weight:600">Nothing to cut</span><span style="color:var(--tx2)">Draw over a capture to cut a piece out.</span>
+        <button onClick="{{ closeToast }}" style="width:24px;height:24px;border:0;border-radius:6px;background:transparent;color:var(--tx3);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="11" height="11" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ hasOne }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ stop }}" style="width:300px;flex:none;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:auto">
+    <div style="padding:12px 14px 12px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="padding:2px 6px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);font:600 9.5px 'Geist Mono',monospace;letter-spacing:.06em;color:var(--tx2)">{{ cur.typeU }}</span>
+        <span style="font:400 10.5px 'Geist Mono',monospace;color:var(--tx3);flex:1">{{ cur.code }}</span>
+        <button title="Copy id" style="width:22px;height:22px;border:0;border-radius:5px;background:transparent;color:var(--tx3);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"></rect><path d="M3 10.5V3.8C3 3.3 3.3 3 3.8 3h6.7"></path></svg></button>
+      </div>
+      <input value="{{ cur.name }}" onChange="{{ onName }}" style="font:600 15px 'Geist',sans-serif;color:var(--tx);background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 6px;margin:0 -7px;outline:none" style-hover="border-color:var(--line2)" style-focus="border-color:var(--acc);background:var(--panel2)">
+    </div>
+
+    <div style="padding:0 12px 14px">
+      <div style="border-radius:11px;background:var(--agSoft);border:1px solid var(--agLine);padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:7px;padding:0 2px">
+          <span style="width:8px;height:8px;background:var(--ag);transform:rotate(45deg);flex:none"></span>
+          <span style="font-weight:600;color:var(--ag);flex:1">Instructions for the agent</span>
+          <sc-if value="{{ cur.badge }}"><span style="min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:9px 9px 9px 3px;background:var(--ag);color:var(--agTx);display:grid;place-items:center;font:600 10px 'Geist',sans-serif">{{ cur.badge }}</span></sc-if>
+        </div>
+        <textarea value="{{ cur.instr }}" onChange="{{ onInstr }}" placeholder="What should the agent do with this element?" rows="7" style="width:100%;box-sizing:border-box;resize:vertical;min-height:110px;padding:9px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);color:var(--tx);font:400 12.5px/1.55 'Geist',sans-serif;outline:none;user-select:text" style-focus="border-color:var(--ag)"></textarea>
+        <div style="display:flex;align-items:center;gap:6px;padding:0 2px;color:var(--tx3);font-size:10.5px;line-height:1.35"><span style="flex:1;text-wrap:pretty">Sent with the image, position, style and links.</span><span style="font:500 10px 'Geist Mono',monospace;padding:1px 4px;border:1px solid var(--line2);border-radius:4px">⌘↵</span></div>
+      </div>
+    </div>
+
+    <div style="padding:12px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px"><span style="font-weight:600;flex:1">Links</span><span style="color:var(--tx3);font-size:11px">{{ cur.linkCount }}</span></div>
+      <sc-for list="{{ cur.links }}" as="l" hint-placeholder-count="0">
+        <div style="border:1px solid var(--line2);border-radius:9px;padding:8px;display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--tx3)"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"></path></svg><span style="font-weight:500;flex:1">{{ l.to }}</span><span style="color:var(--tx3);font-size:10.5px">{{ l.kind }}</span><button onClick="{{ l.remove }}" title="Remove link" style="width:20px;height:20px;border:0;border-radius:5px;background:transparent;color:var(--tx3);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="10" height="10" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button></div>
+          <div style="display:grid;grid-template-columns:62px minmax(0,1fr);gap:5px 8px;align-items:center;font-size:11px;color:var(--tx2)">
+            <span>Trigger</span><input defaultValue="{{ l.trigger }}" placeholder="e.g. onClick" style="height:24px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--tx);font:400 11px 'Geist Mono',monospace;outline:none;min-width:0">
+            <span>Payload</span><input defaultValue="{{ l.payload }}" placeholder="e.g. ApiResponse<User>" style="height:24px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--tx);font:400 11px 'Geist Mono',monospace;outline:none;min-width:0">
+          </div>
+        </div>
+      </sc-for>
+      <select value="" onChange="{{ addLink }}" style="height:30px;padding:0 8px;border:1px dashed var(--line2);border-radius:8px;background:transparent;color:var(--tx2);font:500 12px 'Geist',sans-serif;cursor:pointer">
+        <option value="">Link to: Choose a node…</option>
+        <sc-for list="{{ linkTargets }}" as="o" hint-placeholder-count="0"><option value="{{ o.id }}">{{ o.name }}</option></sc-for>
+      </select>
+    </div>
+
+    <sc-if value="{{ cur.shape }}">
+    <div style="border-top:1px solid var(--line);padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px">
+      <button onClick="{{ toggleStyle }}" style="display:flex;align-items:center;gap:6px;border:0;padding:0;background:transparent;color:var(--tx);font:600 12px 'Geist',sans-serif;cursor:pointer;text-align:left"><span style="flex:1">Style</span><svg width="9" height="9" viewBox="0 0 8 8" style="color:var(--tx3);transform:{{ styleRot }}"><path d="M1.5 2.8L4 5.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></button>
+      <sc-if value="{{ styleOpen }}">
+      <div style="display:grid;grid-template-columns:78px minmax(0,1fr);gap:9px 8px;align-items:center;font-size:11.5px;color:var(--tx2)">
+        <sc-if value="{{ cur.notText }}">
+          <span>Fill</span>
+          <div style="display:flex;gap:1px;padding:2px;border-radius:7px;background:var(--panel2)">
+            <sc-for list="{{ fillOpts }}" as="f" hint-placeholder-count="4">
+              <button onClick="{{ f.on }}" style="flex:1;height:22px;padding:0;border:0;border-radius:5px;background:{{ f.bg }};color:{{ f.fg }};box-shadow:{{ f.sh }};font:500 11px 'Geist',sans-serif;cursor:pointer">{{ f.label }}</button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ fillSolid }}"><span></span><div style="display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)"><span style="width:14px;height:14px;border-radius:4px;background:#ffd8d0;border:1px solid var(--line2)"></span><span style="font:400 11px 'Geist Mono',monospace;color:var(--tx);flex:1">#FFD8D0</span><span style="color:var(--tx3)">40%</span></div></sc-if>
+          <sc-if value="{{ fillGrad }}"><span></span><div style="display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)"><span style="width:44px;height:14px;border-radius:4px;background:linear-gradient(90deg,#ff4d2e,#ffd8d0);border:1px solid var(--line2)"></span><span style="font:400 11px 'Geist Mono',monospace;color:var(--tx);flex:1">2 stops</span><span style="font:400 11px 'Geist Mono',monospace;color:var(--tx3)">90°</span></div></sc-if>
+          <span>Stroke</span>
+          <div style="display:flex;gap:6px"><div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)"><span style="width:14px;height:14px;border-radius:4px;background:#ff4d2e"></span><span style="font:400 11px 'Geist Mono',monospace;color:var(--tx)">#FF4D2E</span></div><div style="width:52px;display:flex;align-items:center;gap:4px;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);box-sizing:border-box;font:400 11px 'Geist Mono',monospace;color:var(--tx)" title="Stroke width"><span style="color:var(--tx3)">W</span>2</div></div>
+          <span>Corner radius</span>
+          <div style="display:flex;align-items:center;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);font:400 11px 'Geist Mono',monospace;color:var(--tx)">6</div>
+        </sc-if>
+        <sc-if value="{{ cur.text }}">
+          <span>Color</span>
+          <div style="display:flex;align-items:center;gap:7px;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)"><span style="width:14px;height:14px;border-radius:4px;background:#ff4d2e"></span><span style="font:400 11px 'Geist Mono',monospace;color:var(--tx)">#FF4D2E</span></div>
+          <span>Font size</span>
+          <div style="display:flex;align-items:center;height:26px;padding:0 7px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);font:400 11px 'Geist Mono',monospace;color:var(--tx)">13</div>
+          <span>Weight</span>
+          <div style="display:flex;gap:1px;padding:2px;border-radius:7px;background:var(--panel2)"><span style="flex:1;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--tx2)">Regular</span><span style="flex:1;height:22px;border-radius:5px;display:grid;place-items:center;background:var(--panel);color:var(--tx);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600">Bold</span></div>
+        </sc-if>
+        <span>Opacity</span>
+        <div style="display:flex;align-items:center;gap:8px"><input type="range" min="0" max="100" defaultValue="100" style="flex:1;min-width:0;accent-color:var(--acc)"><span style="width:34px;text-align:right;font:400 11px 'Geist Mono',monospace;color:var(--tx)">100%</span></div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ cur.isCap }}">
+      <div style="border-top:1px solid var(--line);padding:12px 14px 16px;display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;font-size:11.5px;color:var(--tx2)">
+        <span style="grid-column:1 / -1;font-weight:600;color:var(--tx);font-size:12px">Capture</span>
+        <span>Source</span><span style="color:var(--tx)">{{ cur.src }}</span>
+        <span>Size</span><span style="color:var(--tx);font-family:'Geist Mono',monospace;font-size:11px">{{ cur.size }}</span>
+        <span>Captured</span><span style="color:var(--tx)">{{ cur.when }}</span>
+        <span style="grid-column:1 / -1;color:var(--tx3);font-size:11px;line-height:1.45;text-wrap:pretty">Captures have no style. Press C to cut a piece out.</span>
+      </div>
+    </sc-if>
+    <sc-if value="{{ cur.isFrame }}">
+      <div style="border-top:1px solid var(--line);padding:12px 14px 16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px;color:var(--tx2)">
+        <span style="font-weight:600;color:var(--tx);font-size:12px">Frame</span>
+        <span style="line-height:1.45;text-wrap:pretty">Contains {{ cur.childCount }} elements. Moving the frame moves its content.</span>
+      </div>
+    </sc-if>
+  </div>
+  </sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:850},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;idle&quot;,&quot;single&quot;,&quot;multi&quot;,&quot;cut&quot;,&quot;capture&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;single&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const ELS = {
+  frameA:{type:'Frame',code:'FRM_4LGN0A',name:'Login screen',box:[0,0,420,300],instr:'Login page of the web app (src/pages/Login.tsx). Apply the annotated changes to the existing form component.'},
+  capA:{type:'Capture',code:'CAP_2NZ66PBB',name:'Safari — Acme · Sign in',box:[20,20,380,260],instr:'',src:'Safari',size:'1280 × 864',when:'Today, 14:01'},
+  rect1:{type:'Rectangle',code:'RCT_8QK2M1',name:'Sign-in button',box:[92,196,236,44],instr:'Make this button full width and use the primary/600 token. Keep a 44 px height. On success it navigates to the dashboard.',shape:true},
+  cross1:{type:'Cross',code:'CRS_5TJ0PW',name:'Remove “Forgot password”',box:[170,241,80,22],instr:'Remove this link. Password reset moves to the email step.',shape:true},
+  tx1:{type:'Text',code:'TXT_9HD3VE',name:'Note “too small?”',box:[332,204,76,20],instr:'',shape:true,text:true},
+  frameB:{type:'Frame',code:'FRM_7DSH2C',name:'Dashboard',box:[520,0,460,300],instr:''},
+  capB:{type:'Capture',code:'CAP_K3R8QX1Z',name:'Chrome — Acme · Dashboard',box:[540,20,420,260],instr:'',src:'Google Chrome',size:'1440 × 900',when:'Today, 14:02'},
+  capC:{type:'Capture',code:'CAP_Q0WM4T7E',name:'Settings modal',box:[0,360,280,180],instr:'Reference only: reuse this modal style for the delete-account confirmation.',src:'Safari',size:'960 × 620',when:'Today, 14:04'},
+};
+const TREE = [['frameA',0],['capA',1],['rect1',1],['cross1',1],['tx1',1],['frameB',0],['capB',1],['capC',0]];
+const PARENT = {capA:'frameA',rect1:'frameA',cross1:'frameA',tx1:'frameA',capB:'frameB'};
+const TOOLKEYS = {v:'select',f:'frame',r:'rect',o:'ellipse',l:'line',a:'arrow',x:'cross',p:'pen',t:'text',c:'cut'};
+const TOOLNAME = {rect:['Rectangle','R'],ellipse:['Ellipse','O'],polygon:['Polygon','—'],line:['Line','L'],arrow:['Arrow','A']};
+
+class Component extends DCLogic {
+  _root = null; _canvas = null;
+  ro = new ResizeObserver(() => this.measure());
+  uid = 'sf' + Math.random().toString(36).slice(2, 9);
+  state = this.init();
+  init() {
+    const sc = this.props.scenario || 'idle';
+    const instr = {}, names = {};
+    for (const k in ELS) { instr[k] = ELS[k].instr; names[k] = ELS[k].name; }
+    return {
+      sc, instr, names,
+      sel: sc === 'single' ? ['rect1'] : sc === 'multi' ? ['rect1','cross1'] : sc === 'capture' ? ['capA'] : [],
+      tool: sc === 'cut' ? 'cut' : 'select', cutMode: 'lasso', shape: 'rect', line: 'line', fly: null,
+      hidden: {}, locked: { capA: true }, hoverRow: null, hoverBadge: sc === 'idle' ? 'rect1' : null,
+      toast: sc === 'cut', fill: 'none', z: 0.8, ox: 60, oy: 90, narrow: false, layersOpen: false, styleOpen: true,
+      links: { rect1: [{ to: 'frameB', trigger: 'onClick', payload: 'ApiResponse<User>' }] },
+    };
+  }
+  ensure() {
+    if (this._root && this._root.isConnected && this.fitted) return;
+    if (this._pending) return;
+    this._pending = true;
+    const step = () => {
+      this._pending = false;
+      if (this._dead) return;
+      const r = document.querySelector('[data-sf-root="' + this.uid + '"]');
+      const c = document.querySelector('[data-sf-canvas="' + this.uid + '"]');
+      if (r && c && (r !== this._root || c !== this._canvas)) { this.ro.disconnect(); this._root = r; this._canvas = c; this.ro.observe(r); this.ro.observe(c); }
+      if (!this.measure()) { this._pending = true; setTimeout(step, 50); }
+    };
+    setTimeout(step, 50);
+  }
+  componentDidMount() { this.ensure(); }
+  componentWillUnmount() { this._dead = true; this.ro.disconnect(); }
+  measure() {
+    const r = this._root, c = this._canvas;
+    if (!r || !c || !r.isConnected || !r.offsetWidth || !c.offsetWidth) return false;
+    const narrow = r.offsetWidth < 1200;
+    if (narrow !== this.state.narrow) { this.setState({ narrow }); this._pending = true; setTimeout(() => { this._pending = false; this.measure() || this.ensure(); }, 60); return true; }
+    if (!this.fitted) { this.fitted = true; this.fit(); }
+    return true;
+  }
+  fit() {
+    const c = this._canvas; if (!c) return;
+    const cw = c.offsetWidth, ch = c.offsetHeight;
+    const z = Math.max(0.3, Math.min((cw - 100) / 980, (ch - 170) / 560, 1));
+    this.setState({ z, ox: (cw - 980 * z) / 2, oy: Math.max(this.state.tool === 'cut' ? 124 : 92, (ch - 540 * z) / 2 + 24) });
+  }
+  zoomBy(f) {
+    const c = this._canvas; if (!c) return;
+    this.setState(s => { const z = Math.min(4, Math.max(0.1, s.z * f)); const cx = c.offsetWidth / 2, cy = c.offsetHeight / 2;
+      return { z, ox: cx - (cx - s.ox) * (z / s.z), oy: cy - (cy - s.oy) * (z / s.z) }; });
+  }
+  setTool(tool) {
+    const u = { tool, fly: null };
+    if (['rect','ellipse','polygon'].includes(tool)) u.shape = tool;
+    if (['line','arrow'].includes(tool)) u.line = tool;
+    if (tool !== 'cut') u.toast = false;
+    this.setState(u);
+  }
+  renderVals() {
+    this.ensure();
+    const s = this.state, sc = s.sc;
+    const isEmpty = sc === 'empty';
+    const S = b => ({ left: s.ox + b[0] * s.z, top: s.oy + b[1] * s.z, width: b[2] * s.z, height: b[3] * s.z });
+    const pick = {}, op = {}, nm = {}, flbl = {};
+    for (const k in ELS) {
+      pick[k] = e => { e.stopPropagation(); if (s.locked[k] && !e.shiftKey) {} this.setState(st => ({ sel: e.shiftKey ? (st.sel.includes(k) ? st.sel.filter(x => x !== k) : [...st.sel, k]) : [k], fly: null })); };
+      op[k] = s.hidden[k] ? 0.15 : 1; nm[k] = s.names[k];
+      flbl[k] = s.sel.includes(k) ? 'var(--sel)' : 'var(--tx2)';
+    }
+    const hasInstr = k => (s.instr[k] || '').trim().length > 0;
+    const numbered = TREE.map(t => t[0]).filter(hasInstr);
+    const badges = numbered.map((k, i) => { const b = S(ELS[k].box); return { n: i + 1, x: b.left + b.width - 10, y: b.top - 10,
+      enter: () => this.setState({ hoverBadge: k }), leave: () => this.setState({ hoverBadge: null }), pick: e => { e.stopPropagation(); this.setState({ sel: [k] }); } }; });
+    let co = null;
+    if (s.hoverBadge && hasInstr(s.hoverBadge)) { const b = S(ELS[s.hoverBadge].box); co = { x: b.left + b.width + 16, y: b.top - 12, name: s.names[s.hoverBadge], text: s.instr[s.hoverBadge] }; }
+
+    let sb = {};
+    if (s.sel.length) {
+      const bs = s.sel.map(k => ELS[k].box);
+      const x0 = Math.min(...bs.map(b => b[0])), y0 = Math.min(...bs.map(b => b[1]));
+      const x1 = Math.max(...bs.map(b => b[0] + b[2])), y1 = Math.max(...bs.map(b => b[1] + b[3]));
+      const r = S([x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4]);
+      sb = { ...r, barTop: r.top + r.height + 34, dims: `${Math.round(x1 - x0)} × ${Math.round(y1 - y0)}` };
+    }
+    const selRow = new Set(s.sel);
+    const rows = TREE.map(([k, d]) => { const e = ELS[k], on = selRow.has(k), hov = s.hoverRow === k;
+      return { name: s.names[k], pad: 6 + d * 16, bg: on ? 'var(--accSoft)' : hov ? 'var(--hover)' : 'transparent', fg: 'var(--tx)', ic: on ? 'var(--acc)' : 'var(--tx3)', fw: e.type === 'Frame' ? 600 : 400,
+        rowOp: s.hidden[k] ? 0.5 : 1, tFrame: e.type === 'Frame', tCap: e.type === 'Capture', tRect: e.type === 'Rectangle', tCross: e.type === 'Cross', tText: e.type === 'Text',
+        hasInstr: hasInstr(k), hidden: !!s.hidden[k], lockOp: s.locked[k] ? 0.9 : hov ? 0.6 : 0, eyeOp: s.hidden[k] ? 0.9 : hov ? 0.6 : 0,
+        onClick: e => { this.setState(st => ({ sel: e.shiftKey ? [...st.sel, k] : [k] })); }, onEnter: () => this.setState({ hoverRow: k }), onLeave: () => this.setState({ hoverRow: null }),
+        lock: e => { e.stopPropagation(); this.setState(st => ({ locked: { ...st.locked, [k]: !st.locked[k] } })); },
+        eye: e => { e.stopPropagation(); this.setState(st => ({ hidden: { ...st.hidden, [k]: !st.hidden[k] } })); } }; });
+
+    const btn = (active, on) => ({ bg: active ? 'var(--accSoft)' : 'transparent', fg: active ? 'var(--acc)' : 'var(--tx2)', on: e => { e.stopPropagation(); on(); } });
+    const shapeActive = ['rect','ellipse','polygon'].includes(s.tool), lineActive = ['line','arrow'].includes(s.tool);
+    const t = {
+      select: btn(s.tool === 'select', () => this.setTool('select')), frame: btn(s.tool === 'frame', () => this.setTool('frame')),
+      cross: btn(s.tool === 'cross', () => this.setTool('cross')), pen: btn(s.tool === 'pen', () => this.setTool('pen')),
+      text: btn(s.tool === 'text', () => this.setTool('text')), cut: btn(s.tool === 'cut', () => this.setTool('cut')),
+      shape: { ...btn(shapeActive, () => this.setTool(s.shape)), isRect: s.shape === 'rect', isEllipse: s.shape === 'ellipse', isPoly: s.shape === 'polygon', key: s.shape === 'polygon' ? '' : TOOLNAME[s.shape][1], title: TOOLNAME[s.shape][0] + (s.shape === 'polygon' ? '' : ` (${TOOLNAME[s.shape][1]})`),
+        fly: e => { e.stopPropagation(); this.setState(st => ({ fly: st.fly === 'shape' ? null : 'shape' })); } },
+      line: { ...btn(lineActive, () => this.setTool(s.line)), isLine: s.line === 'line', isArrow: s.line === 'arrow', key: TOOLNAME[s.line][1], title: `${TOOLNAME[s.line][0]} (${TOOLNAME[s.line][1]})`,
+        fly: e => { e.stopPropagation(); this.setState(st => ({ fly: st.fly === 'line' ? null : 'line' })); } },
+    };
+    const menu = ids => ids.map(id => ({ label: TOOLNAME[id][0], key: TOOLNAME[id][1], bg: s.tool === id ? 'var(--accSoft)' : 'transparent', on: e => { e.stopPropagation(); this.setTool(id); } }));
+    const seg = (active) => ({ bg: active ? 'var(--panel)' : 'transparent', fg: active ? 'var(--tx)' : 'var(--tx2)', sh: active ? '0 1px 2px rgba(0,0,0,.14)' : 'none' });
+    const cutModes = [['lasso','Lasso'],['line','Line'],['rect','Rectangle']].map(([id, label]) => ({ label, ...seg(s.cutMode === id), on: e => { e.stopPropagation(); this.setState({ cutMode: id }); } }));
+    const fillOpts = [['none','None'],['solid','Solid'],['linear','Linear'],['radial','Radial']].map(([id, label]) => ({ label, ...seg(s.fill === id), on: () => this.setState({ fill: id }) }));
+
+    const one = s.sel.length === 1 ? s.sel[0] : null;
+    let cur = {};
+    if (one) { const e = ELS[one]; const ls = s.links[one] || [];
+      cur = { typeU: e.type.toUpperCase(), code: e.code, name: s.names[one], instr: s.instr[one], badge: hasInstr(one) ? numbered.indexOf(one) + 1 : 0,
+        shape: !!e.shape, text: !!e.text, notText: !e.text, isCap: e.type === 'Capture', isFrame: e.type === 'Frame', src: e.src, size: e.size, when: e.when,
+        childCount: Object.values(PARENT).filter(p => p === one).length,
+        linkCount: ls.length ? ls.length : 'None yet',
+        links: ls.map((l, i) => ({ to: s.names[l.to], kind: ELS[l.to].type, trigger: l.trigger, payload: l.payload,
+          remove: () => this.setState(st => ({ links: { ...st.links, [one]: st.links[one].filter((_, j) => j !== i) } })) })) };
+    }
+    const n = s.sel.length;
+    const exportLabel = n === 0 ? 'Export canvas' : n > 1 ? 'Export selection' : ELS[s.sel[0]].type === 'Frame' ? 'Export frame' : 'Export element';
+    const lp = s.narrow ? { display: s.layersOpen ? 'flex' : 'none', pos: 'absolute', shadow: 'var(--shadow)' } : { display: 'flex', pos: 'relative', shadow: 'none' };
+    const shapesSel = s.sel.filter(k => ELS[k].shape && !ELS[k].text).length;
+    return {
+      uid: this.uid, isEmpty, hasEls: !isEmpty,
+      agentOn: !isEmpty, agentOff: isEmpty, agentNote: sc === 'idle' ? 'read the canvas · just now' : 'connected',
+      exportLabel, lp, narrow: s.narrow, toggleLayers: e => { e.stopPropagation(); this.setState(st => ({ layersOpen: !st.layersOpen })); },
+      rows: isEmpty ? [] : rows, covered: numbered.length, total: TREE.length,
+      worldTf: `translate(${s.ox}px, ${s.oy}px) scale(${s.z})`, pick, op, nm, flbl,
+      hasSel: n > 0, sb, isMulti: n > 1 && shapesSel > 1, badges: isEmpty ? [] : badges, hasCallout: !!co && !one, co: co || {},
+      t, flyShape: s.fly === 'shape', flyLine: s.fly === 'line', shapeMenu: menu(['rect','ellipse','polygon']), lineMenu: menu(['line','arrow']),
+      isCut: s.tool === 'cut', cutModes, cutHint: s.cutMode === 'lasso' ? 'Circle an area of a capture' : s.cutMode === 'line' ? 'Drag across a capture to split it' : 'Drag a box over a capture',
+      zoomPct: Math.round(s.z * 100) + '%', zoomIn: e => { e.stopPropagation(); this.zoomBy(1.25); }, zoomOut: e => { e.stopPropagation(); this.zoomBy(0.8); }, fit: e => { e.stopPropagation(); this.fit(); },
+      toast: s.toast, closeToast: e => { e.stopPropagation(); this.setState({ toast: false }); },
+      stop: e => e.stopPropagation(),
+      deselect: () => this.setState({ sel: [], fly: null, layersOpen: false }),
+      hasOne: !!one, cur, fillOpts, fillSolid: s.fill === 'solid', fillGrad: s.fill === 'linear' || s.fill === 'radial',
+      styleOpen: s.styleOpen, styleRot: s.styleOpen ? 'none' : 'rotate(-90deg)', toggleStyle: () => this.setState(st => ({ styleOpen: !st.styleOpen })),
+      onName: e => { const v = e.target.value; this.setState(st => ({ names: { ...st.names, [one]: v } })); },
+      onInstr: e => { const v = e.target.value; this.setState(st => ({ instr: { ...st.instr, [one]: v } })); },
+      linkTargets: one ? TREE.map(x => x[0]).filter(k => k !== one).map(k => ({ id: k, name: `${s.names[k]} · ${ELS[k].type}` })) : [],
+      addLink: e => { const v = e.target.value; if (!v) return; this.setState(st => ({ links: { ...st.links, [one]: [...(st.links[one] || []), { to: v, trigger: '', payload: '' }] } })); e.target.value = ''; },
+      onKey: e => {
+        const tag = e.target.tagName;
+        if (e.key === 'Escape') { if (tag === 'TEXTAREA' || tag === 'INPUT') e.target.blur(); this.setTool('select'); return; }
+        if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || e.metaKey || e.ctrlKey) return;
+        if (e.key === '!' && e.shiftKey) { this.fit(); return; }
+        const tl = TOOLKEYS[e.key.toLowerCase()]; if (tl) this.setTool(tl);
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

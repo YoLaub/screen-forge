@@ -1,0 +1,66 @@
+# Redesign wiring audit
+
+"Backend" here is the Tauri commands (`src-tauri/src`), `sf-core` and the
+`screenforge-mcp` server. Each data point the mockup shows gets three answers:
+1 · the command or file exists, 2 · the front calls it, 3 · it carries the field shown.
+Checked in code on 2026-09-30 (branch `dev`), not from docs.
+
+Status: **ok** (1-2-3 yes), **front** (backend ok, UI work only), **gap** (backend
+missing: needs a spec and a consuming ticket), **decide** (conflict or scope question for
+the owner).
+
+| Block | Data or action | 1 | 2 | 3 | Status | Notes |
+|---|---|---|---|---|---|---|
+| titlebar | project folder name | `get_last_project` | yes | path | front | name derived from the path |
+| titlebar | "Saved 14:03" | `save_canvas` | yes | n/a | front | today in the status line |
+| titlebar | agent pill "Claude Code · connected" | `agent_status` | only when the dialog opens | `registered` | front | call it at start and after Connect |
+| titlebar | "read the canvas · just now" | none | no | no | **gap** | the MCP server records nothing about reads |
+| titlebar | Export, label follows selection | `export_png` | yes | yes | front | moves from the canvas toolbar to the title bar |
+| titlebar | traffic lights inside a 44 px bar | window config | n/a | n/a | front | `titleBarStyle: Overlay` + drag region |
+| layers | typed icons (frame, capture, rectangle, cross, text) | node kind + `sfShape` | yes | kind only for rect / ellipse / text | front | icon from the Fabric type |
+| layers | instruction dot, "N of M elements have instructions" | node props | yes | `sfInstructions` | front | one shared predicate for dot, count and pins |
+| canvas | link arrow trigger chip | `sfLinks[].trigger` | yes | yes | front | arrows are straight today |
+| pins | numbered pins, hover callout | `sfInstructions` | yes | yes | front | numbering = layers order |
+| toolbar, cut-bar, boolean-bar, zoom, toast, empty-canvas | UI only | n/a | n/a | n/a | front | cut-bar must keep the Ellipse mode |
+| inspector | type chip, id, Copy id | node props | yes | yes | front | clipboard write |
+| inspector | ⌘↵ in instructions | none | n/a | n/a | **decide** | the mockup does not say what it does |
+| inspector | Capture "Source" | none | no | no | **gap** | only baked into the name at capture time |
+| inspector | Capture "Captured" time | none | no | no | **gap** | not stored |
+| inspector | Capture "Size" | image natural size | yes | yes | front | |
+| inspector | Frame "Contains N elements" | `assignParents` | yes | yes | front | |
+| picker | windows grouped by app, size | `list_windows` | yes | `app_name`, `width`, `height` | front | |
+| picker | "live window preview" | `capture_window` | on pick only | full PNG | front | capture on hover, debounced; heavier, no new command |
+| picker | loading, Try again, Refresh list | `list_windows`, `ensure_screen_capture_access` | yes | yes | front | |
+| connect | "MCP server running" + project path | none | no | no | **decide** | no server runs between agent sessions: the line would be false as written |
+| connect | client states and buttons | `agent_status`, `configure_*` | yes | yes | front | "Connecting…" = busy flag, "Connection failed" = error string |
+| connect | "last read the canvas at 14:05 · 8 elements, 4 with instructions" | none | no | no | **gap** | same source as the title bar note |
+| home | Recent projects (name, path, when) | `get_last_project` only | yes | one path, no date | **gap** | `sf-core::app_state` keeps a single path |
+| home | "or drop one here" (folder) | none | no | no | **gap** | `dragDropEnabled: false`; web drops carry no path, needs the Tauri drag-drop event |
+| home | ⌘O, "Opening … / Loading 8 elements" | `load_canvas` | yes | count after load | front | |
+| pill | whole panel | none | no | no | **decide** | new non-activating always-on-top window: new feature and architecture choice |
+| pill | "Added next to “Login screen”" | none | no | no | **decide** | placement rule not specified (captures land at the viewport center today) |
+
+## Gaps (specs to write, each with its consuming ticket)
+
+1. **Agent reads** — `screenforge-mcp` records each tool call (time, tool, node count,
+   nodes with instructions) in `.screenforge/`; the app reads it for the title bar note
+   and the Connect AI footer. Owner of the layout: `sf-core`.
+2. **Capture metadata** — store the source app and capture time on capture nodes
+   (`sfSource`, `sfCapturedAt`), exported in `node.json` so the agent sees them too.
+3. **Recent projects** — `sf-core::app_state` keeps a list (path, last opened) instead of
+   one path; a command returns it.
+4. **Folder drop on Home** — listen to the Tauri drag-drop event on the Home screen only
+   (the canvas keeps its web drop for images).
+
+## Decisions for the owner
+
+- **Edge pill** — build it now, later, or drop it? It is a second window (non-activating
+  panel on macOS), a new feature, not a restyle.
+- **"MCP server running"** — replace by what is true (MCP binary found, project path), or
+  remove the line.
+- **⌘↵ in the instructions** — commit and leave the field, or nothing.
+- **Post-mockup features** — keep ellipse cut (4 cut modes), context menu, groups (group
+  rows need an icon the mockup does not have), merge layers, Shift axis lock.
+- **Theme** — follow the macOS appearance, or a manual switch.
+- **Fonts** — Geist and Geist Mono (SIL OFL) bundled with the app, not loaded from Google
+  Fonts (the app must work offline).
