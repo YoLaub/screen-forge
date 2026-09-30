@@ -48,7 +48,7 @@ import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
 import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
-import { type Matrix, cropBox, rectPolygon, splitByLine, toImagePoints } from "./cut";
+import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
 import { type CutMode, type DrawingTool, SHAPE_NAMES, type Tool, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { nextZoom } from "./viewport";
@@ -292,6 +292,7 @@ const CUT_MODES: { mode: CutMode; label: string; hint: string }[] = [
   { mode: "lasso", label: "Lasso", hint: "Draw freehand around the part to cut out" },
   { mode: "line", label: "Line", hint: "Draw a line across a capture to split it in two" },
   { mode: "rect", label: "Rectangle", hint: "Drag a box around the part to cut out" },
+  { mode: "ellipse", label: "Ellipse", hint: "Drag to cut out an ellipse; Shift for a circle" },
 ];
 
 const WIREFRAME = { fill: "#e5e7eb", stroke: "#6b7280", strokeWidth: 1, strokeUniform: true };
@@ -836,17 +837,26 @@ export default function CanvasView({ root }: { root: string }) {
     // Cut: the gesture cuts the topmost capture it reaches. Lasso and box cut
     // a piece out (the capture keeps a transparent hole); a line splits the
     // capture in two. The capture keeps its id, name, notes and links.
-    let cut: { mode: CutMode; points: Point[]; preview: FabricObject | null } | null = null;
+    let cut: { mode: CutMode; points: Point[]; shift: boolean; preview: FabricObject | null } | null = null;
+    /** Scene outline of the part to cut; a line cut keeps its two ends. */
+    const cutOutline = (c: { mode: CutMode; points: Pt[]; shift: boolean }): Pt[] => {
+      const first = c.points[0];
+      const last = c.points[c.points.length - 1];
+      if (c.mode === "rect") return rectPolygon(first, last);
+      if (c.mode === "ellipse") return ellipsePolygon(dragBox(first, last, c.shift));
+      return c.mode === "line" ? [first, last] : c.points;
+    };
     const drawCutPreview = () => {
       if (!cut) return;
       if (cut.preview) canvas.remove(cut.preview);
       const [first] = cut.points;
       const last = cut.points[cut.points.length - 1];
       const style = { ...DISPLAY_ONLY, fill: "", stroke: "#2563eb", strokeWidth: 1.5 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()] };
+      const outline = cutOutline(cut);
       cut.preview =
         cut.mode === "line"
           ? new Line([first.x, first.y, last.x, last.y], style)
-          : new Polyline(cut.mode === "rect" ? [...rectPolygon(first, last), first] : cut.points, style);
+          : new Polyline(cut.mode === "lasso" ? outline : [...outline, outline[0]], style);
       canvas.add(cut.preview);
       canvas.requestRenderAll();
     };
@@ -882,7 +892,7 @@ export default function CanvasView({ root }: { root: string }) {
           canvas.insertAt(canvas.getObjects().indexOf(img) + 1, other);
           canvas.setActiveObject(other);
         } else {
-          const poly = mode === "rect" ? rectPolygon(local[0], local[local.length - 1]) : local;
+          const poly = local;
           const box = poly.length >= 3 ? cropBox(poly, img.width, img.height) : null;
           if (!box) continue;
           const piece = await place(piecePng(source, poly, box), box);
@@ -898,23 +908,25 @@ export default function CanvasView({ root }: { root: string }) {
     };
     canvas.on("mouse:down", ({ e }) => {
       if (toolRef.current !== "cut" || spaceDown) return;
-      cut = { mode: cutModeRef.current, points: [canvas.getScenePoint(e)], preview: null };
+      cut = { mode: cutModeRef.current, points: [canvas.getScenePoint(e)], shift: e.shiftKey, preview: null };
     });
     canvas.on("mouse:move", ({ e }) => {
       if (!cut) return;
       const p = canvas.getScenePoint(e);
       if (cut.mode === "lasso") cut.points.push(p);
       else cut.points = [cut.points[0], p];
+      cut.shift = e.shiftKey;
       drawCutPreview();
     });
     canvas.on("mouse:up", () => {
       if (!cut) return;
       const { mode, points, preview } = cut;
+      const outline = cutOutline(cut);
       cut = null;
       if (preview) canvas.remove(preview);
       setTool("select");
       if (points.length < 2) return;
-      cutCapture(mode, points).catch((error) => setStatus(`Cut failed: ${String(error)}`));
+      cutCapture(mode, outline).catch((error) => setStatus(`Cut failed: ${String(error)}`));
     });
 
     // Pen: click for a corner, drag for a smooth point; click the first point to
