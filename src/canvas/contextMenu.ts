@@ -8,7 +8,7 @@ export interface MenuTargets {
   grouped: boolean;
 }
 
-export type MenuAction = "copy" | "paste" | "duplicate" | "group" | "ungroup" | "lock" | "forward" | "backward";
+export type MenuAction = "copy" | "paste" | "duplicate" | "group" | "ungroup" | "merge" | "lock" | "forward" | "backward";
 
 export interface MenuItem {
   id: MenuAction;
@@ -27,6 +27,7 @@ export function menuItems(targets: MenuTargets, hasClipboard: boolean): (MenuIte
     "separator",
     { id: "group", label: "Group", shortcut: "⌘G", enabled: targets.count > 1 },
     { id: "ungroup", label: "Ungroup", shortcut: "⇧⌘G", enabled: targets.grouped },
+    { id: "merge", label: "Merge layers", shortcut: "⌘E", enabled: targets.count > 1 },
     "separator",
     { id: "lock", label: any && targets.allLocked ? "Unlock" : "Lock", enabled: any },
     "separator",

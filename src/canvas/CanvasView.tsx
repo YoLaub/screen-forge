@@ -34,6 +34,7 @@ import {
 import { createAutosave } from "./autosave";
 import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
 import { duplicateProps } from "./duplicate";
+import { flattenScale, mergedNodeProps } from "./flatten";
 import { expandToGroups, newGroupId, withGroupRows } from "./groups";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
@@ -92,7 +93,12 @@ const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
 ];
 
 /** PNG of a scene region, independent of the current pan and zoom. */
-function renderRegion(canvas: Canvas, box: Box, multiplier = renderScale(box, RENDER_MAX_SIDE)): string {
+function renderRegion(
+  canvas: Canvas,
+  box: Box,
+  multiplier = renderScale(box, RENDER_MAX_SIDE),
+  filter?: (obj: object) => boolean,
+): string {
   const viewport = canvas.viewportTransform.slice() as TMat2D;
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
   try {
@@ -103,6 +109,7 @@ function renderRegion(canvas: Canvas, box: Box, multiplier = renderScale(box, RE
       width: box.width,
       height: box.height,
       multiplier,
+      filter,
     });
     return dataUrlToBase64(png);
   } finally {
@@ -752,6 +759,46 @@ export default function CanvasView({ root }: { root: string }) {
     canvas.on("selection:created", growUserSelection);
     canvas.on("selection:updated", growUserSelection);
 
+    // Merge flattens nodes into one capture, like merging layers in an image
+    // editor. Links to the sources now point at the merged capture.
+    const flatten = async (targets: NodeObject[]) => {
+      if (targets.length < 2) return;
+      canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => targets.includes(o as NodeObject)) as NodeObject[];
+      const box = unionBox(ordered.map((o) => o.getBoundingRect()), 0)!;
+      const scale = flattenScale(box, ordered.filter((o) => o.sfKind === "capture").map((o) => o.scaleX || 1));
+      // Only the merged nodes, on a transparent background.
+      const background = canvas.backgroundColor;
+      canvas.backgroundColor = "";
+      let png: string;
+      try {
+        png = renderRegion(canvas, box, scale, (o) => ordered.includes(o as NodeObject));
+      } finally {
+        canvas.backgroundColor = background;
+      }
+      const image = await FabricImage.fromURL(`data:image/png;base64,${png}`);
+      const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+      tagAsNode(canvas, image, "capture", nextNodeName("capture", names, "Merged"));
+      Object.assign(image, mergedNodeProps(ordered));
+      // Fabric 7 images are positioned by their center.
+      image.set({ left: box.left + box.width / 2, top: box.top + box.height / 2, scaleX: 1 / scale, scaleY: 1 / scale });
+      image.setCoords();
+      canvas.insertAt(canvas.getObjects().indexOf(ordered[ordered.length - 1]) + 1, image);
+      ordered.forEach((o) => canvas.remove(o));
+      const merged = new Set(ordered.map((o) => o.sfId));
+      const mergedId = (image as unknown as NodeObject).sfId;
+      for (const n of canvas.getObjects().filter(isNode)) {
+        if (n === (image as unknown as NodeObject) || !n.sfLinks?.some((l) => merged.has(l.target_node))) continue;
+        const seen = new Set<string>();
+        n.sfLinks = n.sfLinks
+          .map((l) => (merged.has(l.target_node) ? { ...l, target_node: mergedId } : l))
+          .filter((l) => !seen.has(l.target_node) && seen.add(l.target_node));
+      }
+      canvas.setActiveObject(image);
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+
     // Right-click acts on the selection when it is clicked, else on the node
     // under the pointer (locked ones included, so they can be unlocked).
     let menuTargets: NodeObject[] = [];
@@ -789,6 +836,7 @@ export default function CanvasView({ root }: { root: string }) {
         if (action === "duplicate") duplicate(targets).catch(fail);
         if (action === "group") group(targets);
         if (action === "ungroup") ungroup(targets);
+        if (action === "merge") flatten(targets).catch(fail);
         if (action === "lock") setLocked(targets, !targets.every((t) => t.sfLocked));
         if (action === "forward" || action === "backward") restack(action === "forward" ? 1 : -1, targets[0]);
       },
@@ -920,6 +968,11 @@ export default function CanvasView({ root }: { root: string }) {
         e.preventDefault();
         if (e.shiftKey) ungroup(selectedNodes());
         else group(selectedNodes());
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        flatten(selectedNodes()).catch((error) => setStatus(`Merge failed: ${String(error)}`));
         return;
       }
       if (e.metaKey && e.key.toLowerCase() === "c") {
