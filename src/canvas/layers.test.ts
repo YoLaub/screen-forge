@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type LayerItem, layerRows, lockProps } from "./layers";
-import { hasInstructions, instructionCoverage, layerIcon, layersLayout } from "./layers";
+import { hasInstructions, instructionCoverage, layerIcon, layersLayout, typeLabel } from "./layers";
 
 const item = (id: string, parent?: string, kind: LayerItem["kind"] = "vector_drawing"): LayerItem => ({
   id,
@@ -89,5 +89,14 @@ describe("layersLayout", () => {
     expect(layersLayout(1400)).toBe("docked");
     expect(layersLayout(1200)).toBe("docked");
     expect(layersLayout(1199)).toBe("floating");
+  });
+});
+
+describe("typeLabel", () => {
+  it("names each element type for the inspector and link targets", () => {
+    expect(typeLabel("rect")).toBe("Rectangle");
+    expect(typeLabel("capture")).toBe("Capture");
+    expect(typeLabel("path")).toBe("Path");
+    expect(typeLabel("text")).toBe("Text");
   });
 });
