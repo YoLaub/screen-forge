@@ -11,6 +11,8 @@ interface Props {
   onToggleLocked: (id: string) => void;
   onForward: () => void;
   onBackward: () => void;
+  /** Float over the canvas (narrow windows) instead of taking a column. */
+  floating?: boolean;
 }
 
 const headerButton = "grid size-[26px] place-items-center rounded-md text-tx2 hover:bg-hover disabled:opacity-30";
@@ -25,6 +27,7 @@ export default function LayersPanel({
   onToggleLocked,
   onForward,
   onBackward,
+  floating = false,
 }: Props) {
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
   const commitRename = () => {
@@ -34,7 +37,13 @@ export default function LayersPanel({
   const { covered, total } = instructionCoverage(rows.map((r) => r.item));
 
   return (
-    <aside className="flex w-[236px] flex-none flex-col border-r border-line bg-panel text-xs text-tx">
+    <aside
+      aria-label="Layers"
+      data-layout={floating ? "floating" : "docked"}
+      className={`flex w-[236px] flex-none flex-col border-r border-line bg-panel text-xs text-tx ${
+        floating ? "absolute top-0 bottom-0 left-0 z-30 shadow-panel" : "relative"
+      }`}
+    >
       <div className="flex h-[38px] flex-none items-center gap-1 pr-2 pl-3.5">
         <span className="flex-1 font-semibold">Layers</span>
         <button aria-label="Bring forward" title="Bring forward (⌘])" disabled={!selectedId} onClick={onForward} className={headerButton}>

@@ -80,3 +80,10 @@ export function instructionCoverage(items: LayerItem[]): { covered: number; tota
   const elements = items.filter((i) => i.kind !== "group");
   return { covered: elements.filter((i) => i.instructed).length, total: elements.length };
 }
+
+/** Below this window width the layers panel floats over the canvas (mockup 1d). */
+export const LAYERS_DOCKED_MIN_WIDTH = 1200;
+
+export function layersLayout(windowWidth: number): "docked" | "floating" {
+  return windowWidth >= LAYERS_DOCKED_MIN_WIDTH ? "docked" : "floating";
+}
