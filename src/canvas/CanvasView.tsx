@@ -48,7 +48,7 @@ import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
 import { type BooleanOp, booleanShapes } from "./booleans";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
-import { type LayerRow, hasInstructions, layerIcon, layerRows, layersLayout, lockProps } from "./layers";
+import { type LayerRow, hasInstructions, layerIcon, layerRows, layersLayout, lockProps, typeLabel } from "./layers";
 import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
@@ -230,10 +230,19 @@ function styleOf(obj: FabricObject & SfProps) {
   return applies && readStyle(obj as unknown as StyledLike, applies);
 }
 
-function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
+function typeOf(obj: FabricObject & SfProps): string {
+  return typeLabel(layerIcon({ kind: obj.sfKind, type: obj.type, shape: obj.sfShape }));
+}
+
+/** What the inspector shows; `pin` and `childCount` come from the layers and the frame layout. */
+function toInspectorNode(obj: FabricObject & SfProps, pin: number | undefined, childCount: number): InspectorNode {
   return {
     id: obj.sfId,
     kind: obj.sfKind,
+    typeLabel: typeOf(obj),
+    pin,
+    ...(obj.sfKind === "capture" && { size: { width: Math.round(obj.width), height: Math.round(obj.height) } }),
+    ...(obj.sfKind === "frame" && { childCount }),
     name: obj.sfName,
     instructions: obj.sfInstructions,
     links: obj.sfLinks ?? [],
@@ -416,7 +425,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const fabricRef = useRef<Canvas | null>(null);
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState<InspectorNode | null>(null);
-  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
+  const [others, setOthers] = useState<{ id: string; name: string; type: string }[]>([]);
   // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
@@ -624,22 +633,22 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
       setBooleanCount(active.filter(isNode).filter(isBooleanShape).length);
       setExportTo(exportTarget(active.filter(isNode).map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName));
-      setSelected(node ? toInspectorNode(node) : null);
-      setOthers(
-        canvas
-          .getObjects()
-          .filter(isNode)
-          .filter((n) => n !== node)
-          .map((n) => ({ id: n.sfId, name: n.sfName })),
+      const nodes = canvas.getObjects().filter(isNode);
+      setSelected(
+        node
+          ? toInspectorNode(node, pinNumbers(layerItems).get(node.sfId), node.sfKind === "frame" ? descendants(layoutOf(nodes), node.sfId).length : 0)
+          : null,
       );
+      setOthers(nodes.filter((n) => n !== node).map((n) => ({ id: n.sfId, name: n.sfName, type: typeOf(n) })));
     };
     canvas.on("selection:created", syncSelection);
     canvas.on("selection:updated", syncSelection);
     canvas.on("selection:cleared", syncSelection);
     afterEditRef.current = () => {
+      // Layers first: the inspector reads the pin number from them.
+      refreshLayers();
       syncSelection();
       redrawArrows();
-      refreshLayers();
       commit();
     };
 

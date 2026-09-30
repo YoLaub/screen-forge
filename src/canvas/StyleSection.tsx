@@ -18,8 +18,8 @@ interface Props {
   onStyle: (next: NodeStyle) => void;
 }
 
-const input =
-  "w-full rounded border border-line2 bg-panel2 px-2 py-1 text-sm text-tx focus:border-acc focus:outline-none";
+const box = "flex h-[26px] min-w-0 items-center gap-[7px] rounded-md border border-line bg-panel2 px-[7px]";
+const mono = "min-w-0 flex-1 bg-transparent font-mono text-[11px] text-tx outline-none";
 
 function without(style: NodeStyle, ...keys: (keyof NodeStyle)[]): NodeStyle {
   const next = { ...style };
@@ -27,7 +27,7 @@ function without(style: NodeStyle, ...keys: (keyof NodeStyle)[]): NodeStyle {
   return next;
 }
 
-/** Native macOS color well plus an exact hex field, applied on Enter or blur. */
+/** Swatch (native macOS color well) plus an exact hex field, applied on Enter or blur. */
 function ColorField({ label, value, onColor }: { label: string; value: string; onColor: (hex: string) => void }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
@@ -37,17 +37,17 @@ function ColorField({ label, value, onColor }: { label: string; value: string; o
     else setDraft(value);
   };
   return (
-    <div className="flex items-center gap-2">
+    <div className={box}>
       <input
         type="color"
         aria-label={`${label} picker`}
-        className="h-7 w-9 shrink-0 cursor-pointer rounded border border-line2 bg-panel"
+        className="size-3.5 flex-none cursor-pointer rounded border-0 bg-transparent p-0"
         value={value.toLowerCase()}
         onChange={(e) => onColor(normalizeHex(e.target.value) ?? value)}
       />
       <input
         aria-label={label}
-        className={input}
+        className={mono}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && commit()}
@@ -57,19 +57,37 @@ function ColorField({ label, value, onColor }: { label: string; value: string; o
   );
 }
 
-function NumberField({ label, value, min = 0, onValue }: { label: string; value: number; min?: number; onValue: (n: number) => void }) {
+function NumberField({ label, value, min = 0, prefix, onValue }: { label: string; value: number; min?: number; prefix?: string; onValue: (n: number) => void }) {
   return (
-    <label className="flex items-center justify-between gap-2">
-      <span className="text-tx2">{label}</span>
+    <label className={box} title={label}>
+      {prefix && <span className="font-mono text-[11px] text-tx3">{prefix}</span>}
       <input
         type="number"
         aria-label={label}
         min={min}
-        className={`${input} w-20`}
+        className={mono}
         value={value}
         onChange={(e) => e.target.value !== "" && onValue(Math.max(min, Number(e.target.value)))}
       />
     </label>
+  );
+}
+
+/** Segmented control: one pressed button per option. */
+function Segments<T extends string>({ options, value, onPick }: { options: [T, string][]; value: T; onPick: (v: T) => void }) {
+  return (
+    <div className="flex gap-px rounded-[7px] bg-panel2 p-0.5">
+      {options.map(([id, label]) => (
+        <button
+          key={id}
+          aria-pressed={value === id}
+          onClick={() => onPick(id)}
+          className={`h-[22px] flex-1 rounded-[5px] text-[11px] font-medium ${value === id ? "bg-panel text-tx shadow-sm" : "text-tx2"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -78,6 +96,7 @@ type FillMode = "none" | "solid" | "linear" | "radial";
 export default function StyleSection({ style, applies, onStyle }: Props) {
   const mode: FillMode = style.gradient ? style.gradient.kind : style.fill ? "solid" : "none";
   const firstColor = style.fill ?? style.gradient?.stops[0]?.color ?? DEFAULT_FILL;
+  const opacity = Math.round((style.opacity ?? 1) * 100);
 
   const setMode = (next: FillMode) => {
     const base = without(style, "fill", "gradient");
@@ -99,93 +118,111 @@ export default function StyleSection({ style, applies, onStyle }: Props) {
     const g = style.gradient!;
     onStyle({ ...style, gradient: { ...g, stops: g.stops.map((s, i) => (i === index ? { ...s, color } : s)) } });
   };
+  const Label = ({ children }: { children: string }) => <span>{children}</span>;
 
   return (
-    <section className="flex flex-col gap-2">
-      <span className="font-medium text-tx">Style</span>
-
-      {applies.fill && (
+    <div className="grid grid-cols-[78px_minmax(0,1fr)] items-center gap-x-2 gap-y-[9px] text-[11.5px] text-tx2">
+      {applies.text ? (
         <>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-tx2">Fill</span>
-            <select aria-label="Fill type" className={`${input} w-36`} value={mode} onChange={(e) => setMode(e.target.value as FillMode)}>
-              <option value="none">None</option>
-              <option value="solid">Solid</option>
-              <option value="linear">Linear gradient</option>
-              <option value="radial">Radial gradient</option>
-            </select>
-          </label>
-          {mode === "solid" && <ColorField label="Fill color" value={style.fill!} onColor={(fill) => onStyle({ ...style, fill })} />}
-          {style.gradient && (
+          <Label>Color</Label>
+          <ColorField label="Text color" value={style.fill ?? DEFAULT_STROKE} onColor={(fill) => onStyle({ ...style, fill })} />
+          <Label>Font size</Label>
+          <NumberField label="Font size" value={style.font_size ?? 20} min={1} onValue={(font_size) => onStyle({ ...style, font_size })} />
+          <Label>Weight</Label>
+          <Segments
+            options={[["normal", "Regular"], ["bold", "Bold"]]}
+            value={style.font_weight === "bold" ? "bold" : "normal"}
+            onPick={(font_weight) => onStyle({ ...style, font_weight })}
+          />
+        </>
+      ) : (
+        <>
+          {applies.fill && (
             <>
-              <ColorField label="Gradient start" value={style.gradient.stops[0].color} onColor={(c) => setStop(0, c)} />
-              <ColorField label="Gradient end" value={style.gradient.stops[style.gradient.stops.length - 1].color} onColor={(c) => setStop(style.gradient!.stops.length - 1, c)} />
-              {style.gradient.kind === "linear" && (
-                <NumberField
-                  label="Gradient angle"
-                  value={style.gradient.angle ?? 90}
-                  onValue={(angle) => onStyle({ ...style, gradient: { ...style.gradient!, angle: angle % 360 } })}
-                />
+              <Label>Fill</Label>
+              <Segments
+                options={[["none", "None"], ["solid", "Solid"], ["linear", "Linear"], ["radial", "Radial"]]}
+                value={mode}
+                onPick={setMode}
+              />
+              {mode === "solid" && (
+                <>
+                  <span />
+                  <ColorField label="Fill color" value={style.fill!} onColor={(fill) => onStyle({ ...style, fill })} />
+                </>
               )}
+              {style.gradient && (
+                <>
+                  <span />
+                  <ColorField label="Gradient start" value={style.gradient.stops[0].color} onColor={(c) => setStop(0, c)} />
+                  <span />
+                  <ColorField
+                    label="Gradient end"
+                    value={style.gradient.stops[style.gradient.stops.length - 1].color}
+                    onColor={(c) => setStop(style.gradient!.stops.length - 1, c)}
+                  />
+                  {style.gradient.kind === "linear" && (
+                    <>
+                      <Label>Angle</Label>
+                      <NumberField
+                        label="Gradient angle"
+                        value={style.gradient.angle ?? 90}
+                        onValue={(angle) => onStyle({ ...style, gradient: { ...style.gradient!, angle: angle % 360 } })}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+            </>
+          )}
+          <Label>Stroke</Label>
+          <div className="flex gap-1.5">
+            <div className="min-w-0 flex-1">
+              <ColorField
+                label="Stroke color"
+                value={style.stroke ?? DEFAULT_STROKE}
+                onColor={(stroke) => onStyle({ ...style, stroke, stroke_width: style.stroke_width ?? 1 })}
+              />
+            </div>
+            <div className="w-[60px]">
+              <NumberField
+                label="Stroke width"
+                prefix="W"
+                value={style.stroke ? (style.stroke_width ?? 1) : 0}
+                onValue={(w) =>
+                  onStyle(w === 0 ? without(style, "stroke", "stroke_width") : { ...style, stroke: style.stroke ?? DEFAULT_STROKE, stroke_width: w })
+                }
+              />
+            </div>
+          </div>
+          {applies.radius && (
+            <>
+              <Label>Corner radius</Label>
+              <NumberField
+                label="Corner radius"
+                value={style.radius ?? 0}
+                onValue={(r) => onStyle(r === 0 ? without(style, "radius") : { ...style, radius: r })}
+              />
             </>
           )}
         </>
       )}
-
-      <span className="text-tx2">Stroke</span>
-      <ColorField
-        label="Stroke color"
-        value={style.stroke ?? DEFAULT_STROKE}
-        onColor={(stroke) => onStyle({ ...style, stroke, stroke_width: style.stroke_width ?? 1 })}
-      />
-      <NumberField
-        label="Stroke width"
-        value={style.stroke ? (style.stroke_width ?? 1) : 0}
-        onValue={(w) =>
-          onStyle(w === 0 ? without(style, "stroke", "stroke_width") : { ...style, stroke: style.stroke ?? DEFAULT_STROKE, stroke_width: w })
-        }
-      />
-
-      {applies.radius && (
-        <NumberField
-          label="Corner radius"
-          value={style.radius ?? 0}
-          onValue={(r) => onStyle(r === 0 ? without(style, "radius") : { ...style, radius: r })}
-        />
-      )}
-
-      {applies.text && (
-        <>
-          <NumberField label="Font size" value={style.font_size ?? 20} min={1} onValue={(font_size) => onStyle({ ...style, font_size })} />
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-tx2">Font weight</span>
-            <select
-              aria-label="Font weight"
-              className={`${input} w-28`}
-              value={style.font_weight === "bold" ? "bold" : "normal"}
-              onChange={(e) => onStyle({ ...style, font_weight: e.target.value })}
-            >
-              <option value="normal">Regular</option>
-              <option value="bold">Bold</option>
-            </select>
-          </label>
-        </>
-      )}
-
-      <label className="flex items-center justify-between gap-2">
-        <span className="text-tx2">Opacity</span>
+      <Label>Opacity</Label>
+      <div className="flex items-center gap-2">
         <input
           type="range"
           aria-label="Opacity"
           min={0}
           max={100}
-          value={Math.round((style.opacity ?? 1) * 100)}
+          value={opacity}
+          className="min-w-0 flex-1 accent-acc"
           onChange={(e) => {
             const pct = Number(e.target.value);
             onStyle(pct >= 100 ? without(style, "opacity") : { ...style, opacity: pct / 100 });
           }}
         />
-      </label>
-    </section>
+        <span className="w-[34px] text-right font-mono text-[11px] text-tx">{opacity}%</span>
+      </div>
+    </div>
   );
 }

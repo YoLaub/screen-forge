@@ -87,3 +87,13 @@ export const LAYERS_DOCKED_MIN_WIDTH = 1200;
 export function layersLayout(windowWidth: number): "docked" | "floating" {
   return windowWidth >= LAYERS_DOCKED_MIN_WIDTH ? "docked" : "floating";
 }
+
+const TYPE_LABELS: Record<LayerIcon, string> = {
+  frame: "Frame", capture: "Capture", rect: "Rectangle", ellipse: "Ellipse", polygon: "Polygon", line: "Line",
+  arrow: "Arrow", cross: "Cross", path: "Path", text: "Text", group: "Group",
+};
+
+/** Human name of an element type ("Rectangle"), for the inspector and link targets. */
+export function typeLabel(icon: LayerIcon): string {
+  return TYPE_LABELS[icon];
+}
