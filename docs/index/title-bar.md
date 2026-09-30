@@ -2,7 +2,7 @@
 id: okf-023
 feature: title-bar
 branch: feature/title-bar
-status: in-progress
+status: done
 issue: "#2 [RD-02]"
 files:
   - src/TitleBar.tsx (44 px bar), src/Logo.tsx (brand mark)
@@ -21,9 +21,9 @@ decisions:
 ---
 
 **What**: the redesigned title bar: project switcher, save state, agent pill and
-Export. Verified in the browser E2E (light and dark). Pending: the owner checks
-the traffic lights position and window dragging in the Tauri app (this session
-cannot capture the screen).
+Export. Verified in the browser E2E (light and dark), and by the owner in the
+Tauri dev app: traffic lights aligned in the bar, window drags from empty areas
+(this session cannot capture the screen).
 
 **Pitfalls**:
 - macOS file names ignore case: `titleBar.ts` next to `TitleBar.tsx` breaks the
