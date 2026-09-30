@@ -7,7 +7,7 @@ const kbd = "rounded border border-line2 px-[5px] py-px font-mono text-[10.5px] 
 /** Shown over an empty, loaded canvas; clicks fall through to the canvas around the buttons. */
 export default function EmptyCanvas({ onCapture }: Props) {
   return (
-    <div className="pointer-events-none absolute inset-0 grid place-items-center">
+    <div className="pointer-events-none absolute inset-0 z-[4] grid place-items-center">
       <div className="flex w-[360px] flex-col items-center gap-3.5 text-center text-xs">
         <div className="grid h-[130px] w-[220px] place-items-center rounded-xl border-[1.5px] border-dashed border-line2 text-tx3">
           <svg width="26" height="26" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">

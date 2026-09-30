@@ -162,3 +162,15 @@
 - Two false alarms in the E2E came from the script, not the app: a screenshot
   taken before the hover state rendered, and an assumed pin number that changed
   once a higher layer got instructions. Read the state before calling it a bug.
+
+## window-picker (2026-09-30)
+- Three defects in this and the previous issue were invisible to unit tests and to
+  screenshots, and showed up only when the E2E acted: a button covered by the canvas,
+  a Promise returned from an effect that blanked the app in Chrome 154, and keyboard
+  focus lost after a button unmounted. For any new interactive element, click it and
+  press keys in the browser before calling it done.
+- After each such defect a test now pins it (Promise-returning scrollIntoView, focus
+  after a state change, Escape from a button). The z-index one has no honest unit test
+  (jsdom does no stacking): it is covered by clicking the button in the E2E.
+- A per-app color from a hash of its name gave three greens. Spreading hues over the
+  apps actually listed is better than hashing when the set is small and known.

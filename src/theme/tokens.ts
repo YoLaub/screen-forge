@@ -34,6 +34,10 @@ const light = {
   scrim: "rgba(17,20,32,.28)",
   // Instruction pins: a canvas-colored ring, then a drop shadow (mockup).
   pinShadow: "0 0 0 2px #e6e8ec,0 2px 6px rgba(0,0,0,.25)",
+  // Dialogs (window picker, Connect AI) float higher than panels.
+  dialogShadow: "0 24px 60px rgba(0,0,0,.28),0 2px 6px rgba(0,0,0,.12)",
+  // Letter on an app's tint in the window picker (see appTint).
+  tintTx: "#ffffff",
 };
 
 export type Theme = typeof light;
@@ -66,6 +70,8 @@ const dark: Theme = {
   shadow: "0 1px 2px rgba(0,0,0,.4),0 8px 28px rgba(0,0,0,.45)",
   scrim: "rgba(0,0,0,.5)",
   pinShadow: "0 0 0 2px #0b0c10,0 2px 6px rgba(0,0,0,.25)",
+  dialogShadow: "0 24px 60px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.4)",
+  tintTx: "#ffffff",
 };
 
 export const THEMES = { light, dark };
@@ -87,3 +93,26 @@ export const BRAND = {
   gradient: "linear-gradient(135deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%)",
   mark: "#ffffff",
 };
+
+/** Hue step between consecutive apps: the golden angle, so any run of apps is well spread. */
+const HUE_STEP = 137.508;
+
+/**
+ * Colors of the letter icons in the window picker, one per listed app, in order of first
+ * appearance. Hues are spread by the golden angle, so apps next to each other in the list
+ * are easy to tell apart; the lightness keeps a white letter readable (3:1) on any hue.
+ */
+export function appTints(apps: string[]): Record<string, string> {
+  const s = 0.55;
+  const l = 0.33;
+  const a = s * Math.min(l, 1 - l);
+  const hex = (h: number) => {
+    const channel = (n: number) => {
+      const k = (n + h / 30) % 12;
+      const v = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      return Math.round(v * 255).toString(16).padStart(2, "0");
+    };
+    return `#${channel(0)}${channel(8)}${channel(4)}`;
+  };
+  return Object.fromEntries([...new Set(apps)].map((app, i) => [app, hex((i * HUE_STEP) % 360)]));
+}
