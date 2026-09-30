@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
-import CanvasView from "./canvas/CanvasView";
+import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
+import TitleBar from "./TitleBar";
+import { agentPill } from "./titleBarState";
 import {
   agentStatus,
   configureAgent,
@@ -25,23 +27,36 @@ export default function App() {
   const [agents, setAgents] = useState<AgentStatus | null>(null);
   const [agentBusy, setAgentBusy] = useState<AgentClient | null>(null);
   const [agentMessages, setAgentMessages] = useState<Partial<Record<AgentClient, string>>>({});
+  // The title bar shows the agent state without opening the dialog.
+  const [agentState, setAgentState] = useState<AgentStatus | null>(null);
+  const [saved, setSaved] = useState<Date | null>(null);
+  const [exportLabel, setExportLabel] = useState<string | null>(null);
+  const canvasControls = useRef<CanvasControls | null>(null);
+
+  const refreshAgents = async () => {
+    const status = await agentStatus();
+    setAgentState(status);
+    return status;
+  };
 
   useEffect(() => {
     getLastProject().then((root) =>
       setProject(root ? { status: "open", root } : { status: "none" }),
     );
+    refreshAgents().catch(() => {});
   }, []);
 
   async function openFolder() {
     const root = await pickFolder();
     if (!root) return;
     await setLastProject(root);
+    setSaved(null);
     setProject({ status: "open", root });
   }
 
   async function openAgents() {
     setAgentMessages({});
-    setAgents(await agentStatus());
+    setAgents(await refreshAgents());
   }
 
   async function configure(client: AgentClient) {
@@ -53,7 +68,7 @@ export default function App() {
       setAgentMessages((m) => ({ ...m, [client]: `Failed: ${String(error)}` }));
     } finally {
       setAgentBusy(null);
-      setAgents(await agentStatus());
+      setAgents(await refreshAgents());
     }
   }
 
@@ -61,7 +76,10 @@ export default function App() {
 
   if (project.status === "none") {
     return (
-      <main className="flex h-screen w-screen items-center justify-center bg-bg">
+      <main className="flex h-screen w-screen flex-col bg-bg">
+        {/* Room for the traffic lights, and a handle to move the window. */}
+        <div data-tauri-drag-region className="h-11 flex-none" />
+        <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
           <h1 className="mb-2 text-lg font-semibold text-tx">ScreenForge</h1>
           <p className="mb-6 text-sm text-tx2">
@@ -74,24 +92,30 @@ export default function App() {
             Open a folder
           </button>
         </div>
+        </div>
       </main>
     );
   }
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-bg">
-      <header className="flex items-center gap-3 border-b border-line bg-panel px-3 py-2 text-sm">
-        <span className="font-medium text-tx" title={project.root}>
-          {folderName(project.root)}
-        </span>
-        <button onClick={openFolder} className="text-tx2 hover:text-tx">
-          Change folder
-        </button>
-        <button onClick={openAgents} className="ml-auto text-tx2 hover:text-tx">
-          Connect AI
-        </button>
-      </header>
-      <CanvasView key={project.root} root={project.root} />
+      <TitleBar
+        folder={folderName(project.root)}
+        path={project.root}
+        onChangeFolder={openFolder}
+        saved={saved}
+        agent={agentState && agentPill(agentState)}
+        onAgent={openAgents}
+        exportLabel={exportLabel}
+        onExport={() => canvasControls.current?.exportPng()}
+      />
+      <CanvasView
+        key={project.root}
+        root={project.root}
+        onSaved={setSaved}
+        onExportLabel={setExportLabel}
+        controls={canvasControls}
+      />
       {agents && (
         <AgentSetup
           status={agents}
