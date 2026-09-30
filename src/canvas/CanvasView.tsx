@@ -61,7 +61,8 @@ import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Too
 import { DRAWING, SHAPE_STYLE } from "./drawingDefaults";
 import { TEXT_FONT, withTextFont } from "./textFont";
 import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
-import { nextZoom } from "./viewport";
+import { fitTransform, nextZoom, stepZoom, zoomKey } from "./viewport";
+import ZoomControl from "./ZoomControl";
 
 // Serialize the ScreenForge props with every object in canvas.json.
 FabricObject.customProperties = SF_PROPS;
@@ -72,6 +73,8 @@ const AUTOSAVE_DELAY_MS = 500;
 /** Longest side of the whole-canvas and frame renders sent to the agent. */
 const RENDER_MAX_SIDE = 2000;
 const CANVAS_RENDER_MARGIN = 40;
+/** Free area left by the floating toolbar (top), the zoom control (bottom) and the edges, for Fit all. */
+const FIT_INSETS = { top: 90, right: 50, bottom: 60, left: 50 };
 /** User exports render at 2x (sharp on Retina), down to this longest side. */
 const EXPORT_MAX_SIDE = 8000;
 /** How far a duplicate lands from its original, right and down. */
@@ -500,6 +503,8 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
   const [pins, setPins] = useState<Pin[]>([]);
+  const [zoom, setZoom] = useState(1);
+  const zoomOpsRef = useRef<{ step: (direction: "in" | "out") => void; fit: () => void } | null>(null);
   const [selectionUi, setSelectionUi] = useState<ReturnType<typeof selectionOverlay> | null>(null);
   const [booleanCount, setBooleanCount] = useState(0);
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
@@ -621,7 +626,12 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
     // re-renders when a pin actually changed.
     let pinsKey = "";
     let selectionKey = "";
+    let lastZoom = canvas.getZoom();
     canvas.on("after:render", () => {
+      if (canvas.getZoom() !== lastZoom) {
+        lastZoom = canvas.getZoom();
+        setZoom(lastZoom);
+      }
       const grid = gridBackground(canvas.viewportTransform);
       container.style.backgroundSize = `${grid.size}px ${grid.size}px`;
       container.style.backgroundPosition = `${grid.x}px ${grid.y}px`;
@@ -1082,6 +1092,19 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       }
     });
 
+    // Zoom buttons and shortcuts act around the center of the view; Fit all shows
+    // every visible node in the space left by the floating controls.
+    zoomOpsRef.current = {
+      step: (direction) => canvas.zoomToPoint(new Point(canvas.width / 2, canvas.height / 2), stepZoom(canvas.getZoom(), direction)),
+      fit: () => {
+        const box = unionBox(canvas.getObjects().filter(isNode).filter(isShown).map((n) => n.getBoundingRect()), 0);
+        canvas.setViewportTransform(
+          box ? fitTransform(box, { width: canvas.width, height: canvas.height }, FIT_INSETS) : [1, 0, 0, 1, 0, 0],
+        );
+        canvas.requestRenderAll();
+      },
+    };
+
     // Space + drag pans.
     let spaceDown = false;
     let lastPan: Point | null = null;
@@ -1093,6 +1116,13 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         canvas.defaultCursor = "grab";
       }
       if (e.target instanceof HTMLSelectElement) return;
+      const zoomAction = zoomKey(e);
+      if (zoomAction) {
+        e.preventDefault();
+        if (zoomAction === "fit") zoomOpsRef.current?.fit();
+        else zoomOpsRef.current?.step(zoomAction);
+        return;
+      }
       if (onPenKey(e)) return;
       if (e.metaKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -1627,6 +1657,12 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
             Layers
           </button>
         )}
+        <ZoomControl
+          zoom={zoom}
+          onIn={() => zoomOpsRef.current?.step("in")}
+          onOut={() => zoomOpsRef.current?.step("out")}
+          onFit={() => zoomOpsRef.current?.fit()}
+        />
         <Toolbar tool={tool} choice={choice} cutMode={cutMode} onTool={setTool} onCutMode={setCutMode} onCapture={openPicker} />
         {selectionUi && (
           <span
