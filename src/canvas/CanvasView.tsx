@@ -35,7 +35,7 @@ import { duplicateProps } from "./duplicate";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
-import { type Box, type Pt, arrowBetween, arrowHead } from "./geometry";
+import { type Box, type Pt, arrowBetween, arrowHead, lockToAxis } from "./geometry";
 import { firstImageFile } from "./imageFile";
 import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
@@ -275,7 +275,7 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
 }
 
 const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
-  { id: "select", label: "Select", key: "V", hint: "Select and move; ⌘D duplicates the selection" },
+  { id: "select", label: "Select", key: "V", hint: "Select and move (Shift keeps the move horizontal or vertical); ⌘D duplicates the selection" },
   { id: "frame", label: "Frame", key: "F", hint: "A named screen: everything placed inside it belongs to it" },
   { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
   { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
@@ -501,6 +501,14 @@ export default function CanvasView({ root }: { root: string }) {
     canvas.on("object:added", onChange);
     canvas.on("object:modified", onChange);
     canvas.on("object:removed", onChange);
+    // Shift while dragging keeps the move horizontal or vertical. Registered
+    // before the other move handlers so frame content and arrows follow it.
+    canvas.on("object:moving", ({ e, target, transform }) => {
+      if (!e.shiftKey) return;
+      const { left, top } = transform.original;
+      const p = lockToAxis({ x: left, y: top }, { x: target.left, y: target.top });
+      target.set({ left: p.x, top: p.y });
+    });
     canvas.on("object:moving", redrawArrows);
 
     // Dragging a frame drags everything placed on it, like a screen in Figma.
