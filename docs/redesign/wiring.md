@@ -52,15 +52,15 @@ the owner).
 4. **Folder drop on Home** — listen to the Tauri drag-drop event on the Home screen only
    (the canvas keeps its web drop for images).
 
-## Decisions for the owner
+## Decisions (owner, 2026-09-30)
 
-- **Edge pill** — build it now, later, or drop it? It is a second window (non-activating
-  panel on macOS), a new feature, not a restyle.
-- **"MCP server running"** — replace by what is true (MCP binary found, project path), or
-  remove the line.
-- **⌘↵ in the instructions** — commit and leave the field, or nothing.
-- **Post-mockup features** — keep ellipse cut (4 cut modes), context menu, groups (group
-  rows need an icon the mockup does not have), merge layers, Shift axis lock.
-- **Theme** — follow the macOS appearance, or a manual switch.
-- **Fonts** — Geist and Geist Mono (SIL OFL) bundled with the app, not loaded from Google
-  Fonts (the app must work offline).
+- **Edge pill** — later: framed as its own feature after the redesign, not in this lot.
+- **"MCP server running"** — show what is true: "MCP server ready" when the binary is
+  found (red dot when it is missing), plus the project path.
+- **Theme** — follows the macOS appearance, no manual switch.
+- **Backlog** — GitHub issues, milestone "Redesign", label `redesign`.
+- **Post-mockup features** (defaults, kept) — ellipse cut (4 cut modes), context menu,
+  groups (group rows get their own icon), merge layers, Shift axis lock.
+- **Fonts** (default) — Geist and Geist Mono (SIL OFL) bundled, not loaded from Google Fonts.
+- **⌘↵ in the instructions** (default, to confirm) — leaves the field, like Esc, without
+  discarding the text.
