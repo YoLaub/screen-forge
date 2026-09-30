@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { CUT_HINTS, TOOL_GROUPS, arrowHeadSize, arrowPath, groupOf, rememberInGroup, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 
 const key = (k: string, mods: Partial<KeyboardEvent> = {}) =>
   ({ key: k, metaKey: false, ctrlKey: false, altKey: false, ...mods }) as KeyboardEvent;
@@ -82,5 +82,31 @@ describe("arrowHeadSize", () => {
   it("grows with the stroke so a thick arrow keeps a visible head", () => {
     expect(arrowHeadSize(2)).toBe(16);
     expect(arrowHeadSize(20)).toBe(70);
+  });
+});
+
+describe("tool groups", () => {
+  it("groups shapes and lines behind one toolbar button each", () => {
+    expect(TOOL_GROUPS.shape).toEqual(["rect", "ellipse", "polygon"]);
+    expect(TOOL_GROUPS.line).toEqual(["line", "arrow"]);
+    expect(groupOf("ellipse")).toBe("shape");
+    expect(groupOf("arrow")).toBe("line");
+    expect(groupOf("pen")).toBeUndefined();
+  });
+
+  it("shows the last tool used in each group", () => {
+    const start = { shape: "rect", line: "line" } as const;
+    expect(rememberInGroup(start, "ellipse")).toEqual({ shape: "ellipse", line: "line" });
+    expect(rememberInGroup(start, "arrow")).toEqual({ shape: "rect", line: "arrow" });
+    expect(rememberInGroup(start, "pen")).toBe(start);
+  });
+});
+
+describe("CUT_HINTS", () => {
+  it("has a hint for every cut mode, in the mockup's words", () => {
+    expect(CUT_HINTS.lasso).toBe("Circle an area of a capture");
+    expect(CUT_HINTS.line).toBe("Drag across a capture to split it");
+    expect(CUT_HINTS.rect).toBe("Drag a box over a capture");
+    expect(CUT_HINTS.ellipse).toMatch(/ellipse/i);
   });
 });
