@@ -19,3 +19,10 @@ export const DRAWING = {
   /** Background of the canvas and frame images sent to the agent or exported. */
   renderBackground: "#f5f5f5",
 };
+
+/**
+ * New rectangles, ellipses, polygons and closed pen paths: an annotation outline
+ * with no fill (mockup), so a shape drawn on a capture never hides what it circles.
+ * `shapeFill` stays the color proposed when the user turns a fill on.
+ */
+export const SHAPE_STYLE = { fill: "", stroke: ANNOTATION, strokeWidth: 2, strokeUniform: true };

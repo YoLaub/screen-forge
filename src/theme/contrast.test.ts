@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DRAWING } from "../canvas/drawingDefaults";
+import { DRAWING, SHAPE_STYLE } from "../canvas/drawingDefaults";
 import { contrastRatio } from "./contrast";
 import { THEMES } from "./tokens";
 
@@ -20,4 +20,12 @@ describe("annotation defaults", () => {
       expect(contrastRatio(color, THEMES.dark.canvas)).toBeGreaterThanOrEqual(3);
     });
   }
+});
+
+describe("new shapes", () => {
+  it("are outlines in the annotation color, so they never hide the capture under them", () => {
+    expect(SHAPE_STYLE.fill).toBe("");
+    expect(SHAPE_STYLE.stroke).toBe(DRAWING.cross);
+    expect(SHAPE_STYLE.strokeWidth).toBe(2);
+  });
 });

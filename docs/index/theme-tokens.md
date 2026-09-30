@@ -20,6 +20,7 @@ decisions:
   - "2026-09-30: the theme follows the macOS appearance live, no manual switch"
   - "2026-09-30: drawing colors are content, not theme: they are saved and sent to the agent, so they live in drawingDefaults.ts and do not change with the appearance"
   - "2026-09-30: one annotation color #e8411f (pen, line, arrow, text, cross): the mockup's #ff4d2e darkened to reach 3:1 on both canvases; existing drawings keep their colors"
+  - "2026-09-30: new rectangles, ellipses, polygons and closed pen paths are 2 px annotation outlines with no fill (owner's choice): the grey fill vanished on the light canvas and hid captures"
   - "2026-09-30: images for the agent and exports render on a fixed #f5f5f5 background whatever the theme"
   - "2026-09-30: Geist and Geist Mono bundled through @fontsource (SIL OFL), no Google Fonts request"
 ---
