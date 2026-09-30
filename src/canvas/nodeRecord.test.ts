@@ -127,3 +127,20 @@ describe("toNodeRecord", () => {
     expect(toNodeRecord(obj, { links: [] }).connections).toEqual([]);
   });
 });
+
+describe("toNodeRecord groups", () => {
+  it("tells the agent which group a node belongs to", () => {
+    const obj = {
+      sfId: "vec_1",
+      sfKind: "vector_drawing" as const,
+      sfName: "Field",
+      sfInstructions: "",
+      sfGroup: { id: "grp_1", name: "Login form" },
+      width: 10,
+      height: 10,
+      scaleX: 1,
+      scaleY: 1,
+    };
+    expect(toNodeRecord(obj).group).toEqual({ id: "grp_1", name: "Login form" });
+  });
+});

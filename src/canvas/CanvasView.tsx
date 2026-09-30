@@ -34,6 +34,7 @@ import {
 import { createAutosave } from "./autosave";
 import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
 import { duplicateProps } from "./duplicate";
+import { expandToGroups, newGroupId, withGroupRows } from "./groups";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
@@ -422,7 +423,7 @@ export default function CanvasView({ root }: { root: string }) {
     run: (action: MenuAction) => void;
   } | null>(null);
   const [menu, setMenu] = useState<{ targets: MenuTargets; hasClipboard: boolean }>({
-    targets: { count: 0, allLocked: false },
+    targets: { count: 0, allLocked: false, grouped: false },
     hasClipboard: false,
   });
   const layerOpsRef = useRef<{
@@ -493,14 +494,17 @@ export default function CanvasView({ root }: { root: string }) {
       const parents = layoutOf(nodes);
       setLayers(
         layerRows(
-          nodes.map((n) => ({
-            id: n.sfId,
-            name: n.sfName,
-            kind: n.sfKind,
-            parent: parents[n.sfId],
-            hidden: !isShown(n),
-            locked: !!n.sfLocked,
-          })),
+          withGroupRows(
+            nodes.map((n) => ({
+              id: n.sfId,
+              name: n.sfName,
+              kind: n.sfKind,
+              parent: parents[n.sfId],
+              group: n.sfGroup,
+              hidden: !isShown(n),
+              locked: !!n.sfLocked,
+            })),
+          ),
         ),
       );
     };
@@ -693,6 +697,61 @@ export default function CanvasView({ root }: { root: string }) {
       afterEditRef.current();
     };
 
+    // Groups are light: members stay nodes of their own, share sfGroup, and are
+    // selected and moved together from the canvas. The layers panel can still
+    // select one member alone.
+    const group = (targets: NodeObject[]) => {
+      if (targets.length < 2) return;
+      const names = [...new Set(canvas.getObjects().filter(isNode).map((n) => n.sfGroup?.name).filter((n): n is string => !!n))];
+      const ref = { id: newGroupId(), name: nextNodeName("vector_drawing", names, "Group") };
+      targets.forEach((t) => (t.sfGroup = ref));
+      afterEditRef.current();
+    };
+    const ungroup = (targets: NodeObject[]) => {
+      const ids = new Set(targets.map((t) => t.sfGroup?.id).filter(Boolean));
+      canvas.getObjects().filter(isNode).forEach((n) => {
+        if (n.sfGroup && ids.has(n.sfGroup.id)) delete n.sfGroup;
+      });
+      afterEditRef.current();
+    };
+    /** The selection grown to whole groups; only unlocked, shown nodes can join it. */
+    const grownSelection = (selected: NodeObject[]) => {
+      const pickable = canvas.getObjects().filter(isNode).filter((n) => isShown(n) && !n.sfLocked);
+      const ids = expandToGroups(
+        selected.map((n) => n.sfId),
+        pickable.map((n) => ({ id: n.sfId, group: n.sfGroup?.id })),
+      );
+      return pickable.filter((n) => ids.includes(n.sfId));
+    };
+    // A click on a member selects its group before Fabric starts the drag, so
+    // the whole group moves.
+    canvas.on("mouse:down:before", ({ e }) => {
+      if (toolRef.current !== "select" || spaceDown || e.shiftKey || e.metaKey || ("button" in e && e.button !== 0)) return;
+      const p = canvas.getScenePoint(e);
+      const hit = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n) => isShown(n) && !n.sfLocked)
+        .reverse()
+        .find((n) => n.containsPoint(p));
+      if (!hit?.sfGroup || selectedNodes().includes(hit)) return;
+      selectNodes(grownSelection([hit]));
+      // Fabric found (and cached) the clicked member before this handler ran;
+      // drop that private cache so the drag targets the new group selection.
+      (canvas as unknown as { _targetInfo?: unknown })._targetInfo = undefined;
+    });
+    // Box selection and Shift+click also take whole groups (nothing is moving then).
+    const growUserSelection = ({ e }: { e?: Event }) => {
+      if (!e) return;
+      const selected = selectedNodes();
+      const grown = grownSelection(selected);
+      if (grown.length === selected.length) return;
+      selectNodes(grown);
+      canvas.requestRenderAll();
+    };
+    canvas.on("selection:created", growUserSelection);
+    canvas.on("selection:updated", growUserSelection);
+
     // Right-click acts on the selection when it is clicked, else on the node
     // under the pointer (locked ones included, so they can be unlocked).
     let menuTargets: NodeObject[] = [];
@@ -714,7 +773,11 @@ export default function CanvasView({ root }: { root: string }) {
           syncSelection();
         }
         return {
-          targets: { count: menuTargets.length, allLocked: menuTargets.length > 0 && menuTargets.every((t) => t.sfLocked) },
+          targets: {
+            count: menuTargets.length,
+            allLocked: menuTargets.length > 0 && menuTargets.every((t) => t.sfLocked),
+            grouped: menuTargets.some((t) => t.sfGroup),
+          },
           hasClipboard: clipboard !== null,
         };
       },
@@ -724,38 +787,48 @@ export default function CanvasView({ root }: { root: string }) {
         if (action === "copy") copy(targets);
         if (action === "paste") paste(menuPoint ?? undefined).catch(fail);
         if (action === "duplicate") duplicate(targets).catch(fail);
+        if (action === "group") group(targets);
+        if (action === "ungroup") ungroup(targets);
         if (action === "lock") setLocked(targets, !targets.every((t) => t.sfLocked));
         if (action === "forward" || action === "backward") restack(action === "forward" ? 1 : -1, targets[0]);
       },
     };
+    // A row is a node or a group; a group row acts on all its members.
+    const rowNodes = (id: string) => {
+      const obj = nodeById(id);
+      return obj ? [obj] : canvas.getObjects().filter(isNode).filter((n) => n.sfGroup?.id === id);
+    };
     layerOpsRef.current = {
       select: (id) => {
-        const obj = nodeById(id);
-        if (!obj || !isShown(obj)) return;
-        canvas.setActiveObject(obj);
+        const picked = rowNodes(id).filter((n) => isShown(n) && !n.sfLocked);
+        if (picked.length === 0) return;
+        canvas.discardActiveObject();
+        canvas.setActiveObject(picked.length === 1 ? picked[0] : new ActiveSelection(picked, { canvas }));
         canvas.requestRenderAll();
         syncSelection();
       },
       rename: (id, name) => {
         const obj = nodeById(id);
-        if (!obj) return;
-        obj.sfName = name;
+        if (obj) obj.sfName = name;
+        else rowNodes(id).forEach((n) => (n.sfGroup = { id, name }));
         afterEditRef.current();
       },
       toggleHidden: (id) => {
-        const obj = nodeById(id);
-        if (!obj) return;
-        obj.visible = !isShown(obj);
-        if (!obj.visible && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        const nodes = rowNodes(id);
+        const visible = nodes.every((n) => !isShown(n));
+        nodes.forEach((n) => (n.visible = visible));
+        if (!visible) canvas.discardActiveObject();
         canvas.requestRenderAll();
         afterEditRef.current();
       },
       toggleLocked: (id) => {
-        const obj = nodeById(id);
-        if (!obj) return;
-        obj.sfLocked = !obj.sfLocked;
-        obj.set(lockProps(obj.sfLocked));
-        if (obj.sfLocked && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        const nodes = rowNodes(id);
+        const locked = !nodes.every((n) => n.sfLocked);
+        nodes.forEach((n) => {
+          n.sfLocked = locked;
+          n.set(lockProps(locked));
+        });
+        if (locked) canvas.discardActiveObject();
         canvas.requestRenderAll();
         afterEditRef.current();
       },
@@ -841,6 +914,12 @@ export default function CanvasView({ root }: { root: string }) {
       if (e.metaKey && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         restack(e.key === "]" ? 1 : -1);
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (e.shiftKey) ungroup(selectedNodes());
+        else group(selectedNodes());
         return;
       }
       if (e.metaKey && e.key.toLowerCase() === "c") {

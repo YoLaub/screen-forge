@@ -144,6 +144,7 @@ mod tests {
                 },
                 position: None,
                 parent: None,
+                group: None,
                 text: None,
                 style: None,
                 colors_detected: vec![],

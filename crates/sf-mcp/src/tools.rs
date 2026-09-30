@@ -139,6 +139,7 @@ mod tests {
             },
             position: None,
             parent: None,
+            group: None,
             text: None,
             style: None,
             colors_detected: vec!["#3B82F6".into()],

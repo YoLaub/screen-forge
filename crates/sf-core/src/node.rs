@@ -18,6 +18,9 @@ pub struct Node {
     /// Id of the frame that contains this node, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// Group the user put this node in: its members are meant to be read together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Group>,
     /// Content of a text element, readable by the agent without OCR.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -30,6 +33,12 @@ pub struct Node {
     pub connections: Vec<Connection>,
     #[serde(default)]
     pub user_instructions: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Group {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +142,7 @@ mod tests {
             },
             position: None,
             parent: None,
+            group: None,
             text: None,
             style: None,
             colors_detected: vec!["#3B82F6".into(), "#FFFFFF".into()],
@@ -164,6 +174,20 @@ mod tests {
                 "user_instructions": "Blue gradient, spinner on click."
             })
         );
+    }
+
+    #[test]
+    fn grouped_nodes_name_their_group() {
+        let node = Node {
+            group: Some(Group {
+                id: "grp_form".into(),
+                name: "Login form".into(),
+            }),
+            ..sample()
+        };
+        let value = serde_json::to_value(&node).unwrap();
+        assert_eq!(value["group"], json!({ "id": "grp_form", "name": "Login form" }));
+        assert_eq!(serde_json::from_value::<Node>(value).unwrap(), node);
     }
 
     #[test]
@@ -200,6 +224,7 @@ mod tests {
             },
             position: Some(Position { x: -40.0, y: 10.5 }),
             parent: None,
+            group: None,
             text: None,
             style: None,
             colors_detected: vec![],

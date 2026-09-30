@@ -1,12 +1,14 @@
-import type { NodeKind } from "./nodeRecord";
+import type { GroupRef, NodeKind } from "./nodeRecord";
 
 /** A node as the layers panel sees it. */
 export interface LayerItem {
   id: string;
   name: string;
-  kind: NodeKind;
-  /** Id of the containing frame. */
+  /** A group row stands for its members. */
+  kind: NodeKind | "group";
+  /** Id of the containing frame or group row. */
   parent?: string;
+  group?: GroupRef;
   hidden: boolean;
   locked: boolean;
 }

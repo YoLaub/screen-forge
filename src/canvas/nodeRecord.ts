@@ -6,6 +6,12 @@ import { type NodeStyle, colorsOf } from "./style";
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
 export type NodeKind = "capture" | "vector_drawing" | "frame";
 
+/** A group of nodes the user made; members are read together. */
+export interface GroupRef {
+  id: string;
+  name: string;
+}
+
 export interface NodeRecord {
   id: string;
   type: NodeKind;
@@ -13,6 +19,7 @@ export interface NodeRecord {
   dimensions: { width: number; height: number };
   position?: { x: number; y: number };
   parent?: string;
+  group?: GroupRef;
   text?: string;
   style?: NodeStyle;
   colors_detected: string[];
@@ -35,6 +42,8 @@ export interface SfProps {
   sfLocked?: boolean;
   /** Stroke-only shapes drawn as a path (no fill, not combinable). */
   sfShape?: "arrow" | "cross";
+  /** Group the node belongs to (Cmd+G). */
+  sfGroup?: GroupRef;
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
@@ -48,6 +57,7 @@ export const SF_PROPS: (keyof SfProps)[] = [
   "sfClosed",
   "sfLocked",
   "sfShape",
+  "sfGroup",
 ];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
@@ -100,6 +110,7 @@ export function toNodeRecord(
     },
     ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
     ...(parent && { parent }),
+    ...(obj.sfGroup && { group: obj.sfGroup }),
     ...(text !== undefined && { text }),
     ...(style && Object.keys(style).length > 0 && { style }),
     colors_detected: style ? colorsOf(style) : [],
