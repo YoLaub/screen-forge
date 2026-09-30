@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowBetween, arrowHead } from "./geometry";
+import { arrowBetween, arrowHead, lockToAxis } from "./geometry";
 
 const box = (left: number, top: number, width: number, height: number) => ({ left, top, width, height });
 
@@ -30,5 +30,12 @@ describe("arrowHead", () => {
     expect(right.x).toBeCloseTo(left.x);
     expect(left.y).toBeCloseTo(-right.y);
     expect(Math.abs(left.y)).toBeCloseTo(10 * Math.sin(Math.PI / 6));
+  });
+});
+
+describe("lockToAxis", () => {
+  it("keeps the move along the axis it went furthest on", () => {
+    expect(lockToAxis({ x: 100, y: 50 }, { x: 180, y: 70 })).toEqual({ x: 180, y: 50 });
+    expect(lockToAxis({ x: 100, y: 50 }, { x: 90, y: -40 })).toEqual({ x: 100, y: -40 });
   });
 });

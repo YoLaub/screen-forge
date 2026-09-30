@@ -49,3 +49,10 @@ export function arrowHead(from: Pt, to: Pt, size: number): [Pt, Pt] {
   });
   return [barb(-Math.PI / 6), barb(Math.PI / 6)];
 }
+
+/** Where a drag from `origin` to `current` lands when locked to its main axis (Shift). */
+export function lockToAxis(origin: Pt, current: Pt): Pt {
+  return Math.abs(current.x - origin.x) >= Math.abs(current.y - origin.y)
+    ? { x: current.x, y: origin.y }
+    : { x: origin.x, y: current.y };
+}
