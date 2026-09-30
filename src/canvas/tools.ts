@@ -91,4 +91,4 @@ export function arrowHeadSize(strokeWidth: number): number {
 }
 
 /** How the cut tool draws the part to cut. */
-export type CutMode = "lasso" | "line" | "rect";
+export type CutMode = "lasso" | "line" | "rect" | "ellipse";

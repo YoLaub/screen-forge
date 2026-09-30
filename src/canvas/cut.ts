@@ -74,3 +74,13 @@ export function cropBox(poly: Pt[], width: number, height: number): Box | null {
   if (right - left < MIN_PIECE || bottom - top < MIN_PIECE) return null;
   return { left, top, width: right - left, height: bottom - top };
 }
+
+/** Points around the ellipse inscribed in `box`, enough of them that the cut edge looks smooth. */
+export function ellipsePolygon(box: Box, segments = 96): Pt[] {
+  const cx = box.left + box.width / 2;
+  const cy = box.top + box.height / 2;
+  return Array.from({ length: segments }, (_, i) => {
+    const angle = (2 * Math.PI * i) / segments;
+    return { x: cx + (box.width / 2) * Math.cos(angle), y: cy + (box.height / 2) * Math.sin(angle) };
+  });
+}

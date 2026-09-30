@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cropBox, polygonArea, rectPolygon, splitByLine, toImagePoints } from "./cut";
+import { cropBox, ellipsePolygon, polygonArea, rectPolygon, splitByLine, toImagePoints } from "./cut";
 
 describe("toImagePoints", () => {
   it("maps scene points to image pixels through the inverse transform, from the image center", () => {
@@ -45,5 +45,15 @@ describe("cropBox", () => {
   it("is null when the polygon is outside the image or too small", () => {
     expect(cropBox([{ x: 200, y: 0 }, { x: 210, y: 0 }, { x: 205, y: 10 }], 100, 50)).toBeNull();
     expect(cropBox([{ x: 1, y: 1 }, { x: 1.5, y: 1 }, { x: 1, y: 1.5 }], 100, 50)).toBeNull();
+  });
+});
+
+describe("ellipsePolygon", () => {
+  it("traces the ellipse inscribed in the box, closely enough for pixels", () => {
+    const poly = ellipsePolygon({ left: 10, top: 20, width: 200, height: 100 });
+    for (const p of poly) {
+      expect(((p.x - 110) / 100) ** 2 + ((p.y - 70) / 50) ** 2).toBeCloseTo(1);
+    }
+    expect(polygonArea(poly)).toBeCloseTo(Math.PI * 100 * 50, -2);
   });
 });
