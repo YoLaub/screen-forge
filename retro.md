@@ -154,3 +154,11 @@
   the theme; picking defaults readable on both backgrounds is a design question.
 - The repo color guard caught its own doc comment (example class names): a guard
   scanning source text needs examples phrased so they do not match.
+
+## instruction-pins (2026-09-30)
+- The pins component was written together with its tests (not red first). Caught
+  up by mutating the component: 3 of 4 tests failed as they should. The repo color
+  guard also caught an rgba() in a Tailwind shadow class; it became a token.
+- Two false alarms in the E2E came from the script, not the app: a screenshot
+  taken before the hover state rendered, and an assumed pin number that changed
+  once a higher layer got instructions. Read the state before calling it a bug.

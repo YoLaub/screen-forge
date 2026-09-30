@@ -33,6 +33,7 @@
   --color-link: var(--link);
   --color-scrim: var(--scrim);
   --shadow-panel: var(--shadow);
+  --shadow-pin: var(--pin-shadow);
   --font-sans: "Geist", -apple-system, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
 }

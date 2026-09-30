@@ -35,6 +35,8 @@ import { createAutosave } from "./autosave";
 import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
 import { duplicateProps } from "./duplicate";
 import { flattenScale, mergedNodeProps } from "./flatten";
+import InstructionPins, { type Pin } from "./InstructionPins";
+import { pinNumbers, pinPlacement } from "./pins";
 import { expandToGroups, newGroupId, withGroupRows } from "./groups";
 import { type ExportTarget, exportTarget } from "./exportImage";
 import { createHistory } from "./history";
@@ -435,6 +437,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const cutModeRef = useRef<CutMode>("lasso");
   cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
+  const [pins, setPins] = useState<Pin[]>([]);
   const [booleanCount, setBooleanCount] = useState(0);
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
   const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
@@ -526,27 +529,52 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       redrawArrows();
     });
     // Arrow objects come and go on every redraw: only node changes trigger a save.
+    // Layer rows, top to bottom: the pins are numbered in this order.
+    let layerItems: LayerRow["item"][] = [];
     const refreshLayers = () => {
       const nodes = canvas.getObjects().filter(isNode);
       const parents = layoutOf(nodes);
-      setLayers(
-        layerRows(
-          withGroupRows(
-            nodes.map((n) => ({
-              id: n.sfId,
-              name: n.sfName,
-              kind: n.sfKind,
-              parent: parents[n.sfId],
-              group: n.sfGroup,
-              icon: layerIcon({ kind: n.sfKind, type: n.type, shape: n.sfShape }),
-              instructed: hasInstructions(n.sfInstructions),
-              hidden: !isShown(n),
-              locked: !!n.sfLocked,
-            })),
-          ),
+      const rows = layerRows(
+        withGroupRows(
+          nodes.map((n) => ({
+            id: n.sfId,
+            name: n.sfName,
+            kind: n.sfKind,
+            parent: parents[n.sfId],
+            group: n.sfGroup,
+            icon: layerIcon({ kind: n.sfKind, type: n.type, shape: n.sfShape }),
+            instructed: hasInstructions(n.sfInstructions),
+            hidden: !isShown(n),
+            locked: !!n.sfLocked,
+          })),
         ),
       );
+      layerItems = rows.map((r) => r.item);
+      setLayers(rows);
     };
+    // Instruction pins follow every render (pan, zoom, moves); React only
+    // re-renders when a pin actually changed.
+    let pinsKey = "";
+    canvas.on("after:render", () => {
+      const numbers = pinNumbers(layerItems);
+      const vpt = canvas.viewportTransform;
+      const next = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n) => numbers.has(n.sfId))
+        .map((n) => {
+          const b = n.getBoundingRect();
+          const tl = new Point(b.left, b.top).transform(vpt);
+          const br = new Point(b.left + b.width, b.top + b.height).transform(vpt);
+          const place = pinPlacement({ left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y });
+          return { id: n.sfId, n: numbers.get(n.sfId)!, name: n.sfName, text: n.sfInstructions.trim(), ...place };
+        })
+        .sort((a, b) => a.n - b.n);
+      const key = JSON.stringify(next);
+      if (key === pinsKey) return;
+      pinsKey = key;
+      setPins(next);
+    });
     const onChange = ({ target }: { target: SfObject }) => {
       if (loading || restoring || !isNode(target)) return;
       redrawArrows();
@@ -1498,6 +1526,7 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
         // A click on the canvas closes the floating layers panel.
         onMouseDownCapture={() => setLayersOpen(false)}
       >
+        <InstructionPins pins={pins} calloutsEnabled={!selected} onPick={(id) => layerOpsRef.current?.select(id)} />
         {layout === "floating" && (
           <button
             onMouseDownCapture={(e) => e.stopPropagation()}
