@@ -57,7 +57,10 @@ OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
   on every save, plus `canvas.png` (whole-canvas render). `screenforge-mcp`
   reads `nodes/` and `canvas.png` only and never parses Fabric JSON. It serves
   its working directory's project, else the project open in ScreenForge
-  (`sf-core::app_state`).
+  (`sf-core::app_state`). Its one write is `last_read.json`: after each successful
+  tool call it notes when, which agent and how many nodes it showed (latest only,
+  replaced atomically); the app polls it for the "read the canvas" note in the
+  title bar and the Connect AI footer. It never changes nodes or the canvas.
 - `screenforge-mcp` ships next to the app binary (`Contents/MacOS/`), declared as
   `externalBin` in `src-tauri/tauri.bundle.conf.json` only. The Connect AI panel
   registers it: Claude Code via `claude mcp add --scope user`, Claude Desktop by

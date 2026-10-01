@@ -2,7 +2,7 @@
 name = "sf-mcp"
 version = "0.1.0"
 edition = "2024"
-description = "screenforge-mcp: read-only MCP server (stdio) over a project's .screenforge/ folder"
+description = "screenforge-mcp: MCP server (stdio) over a project's .screenforge/ folder, read-only on the canvas"
 
 [[bin]]
 name = "screenforge-mcp"

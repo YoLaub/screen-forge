@@ -1,4 +1,4 @@
-//! `screenforge-mcp`: read-only MCP server over stdio.
+//! `screenforge-mcp`: MCP server over stdio, read-only on the canvas.
 //! Serves the working directory's project, or else the project open in ScreenForge.
 
 use rmcp::ServiceExt;

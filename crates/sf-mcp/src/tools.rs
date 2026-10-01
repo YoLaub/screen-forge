@@ -1,4 +1,5 @@
-//! Pure tool logic: reads a project's `.screenforge/` folder and builds tool payloads.
+//! Tool logic: reads a project's `.screenforge/` folder and builds tool payloads, and
+//! records each read for the app (`record_read`, the only write).
 //! The rmcp layer in `server.rs` only wraps these functions.
 
 use std::fs;

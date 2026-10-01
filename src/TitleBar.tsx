@@ -1,12 +1,17 @@
 import Logo from "./Logo";
-import { type AgentPill, savedLabel } from "./titleBarState";
+import type { AgentRead } from "./agentRead";
+import type { AgentStatus } from "./AgentSetup";
+import { agentPill, savedLabel } from "./titleBarState";
+import { useNow } from "./useNow";
 
 interface Props {
   folder: string;
   path: string;
   onChangeFolder: () => void;
   saved: Date | null;
-  agent: AgentPill | null;
+  agentStatus: AgentStatus | null;
+  /** The latest read of the canvas by an agent, for the pill's note. */
+  lastRead: AgentRead | null;
   onAgent: () => void;
   exportLabel: string | null;
   onExport: () => void;
@@ -16,7 +21,10 @@ interface Props {
  * 44 px bar holding the macOS traffic lights (the native title bar is an overlay):
  * project, save state, agent state and the Export action. Empty space drags the window.
  */
-export default function TitleBar({ folder, path, onChangeFolder, saved, agent, onAgent, exportLabel, onExport }: Props) {
+export default function TitleBar({ folder, path, onChangeFolder, saved, agentStatus, lastRead, onAgent, exportLabel, onExport }: Props) {
+  // Renewed here, not in App, so the minutes moving on redraw the title bar only.
+  const now = useNow();
+  const agent = agentStatus && agentPill(agentStatus, lastRead, now);
   return (
     <header
       data-tauri-drag-region

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { AgentRead } from "../agentRead";
 import type { AgentClient, AgentStatus } from "../AgentSetup";
 import type { NodeRecord } from "../canvas/nodeRecord";
 import type { WindowInfo } from "../canvas/WindowPicker";
@@ -32,6 +33,11 @@ export function pickPngPath(fileName: string): Promise<string | null> {
 
 export function exportPng(path: string, pngBase64: string): Promise<void> {
   return invoke("export_png", { path, pngBase64 });
+}
+
+/** The latest read of the canvas by an agent, null when none was recorded. */
+export function lastAgentRead(root: string): Promise<AgentRead | null> {
+  return invoke("last_agent_read", { root });
 }
 
 export function loadCanvas(root: string): Promise<string | null> {
