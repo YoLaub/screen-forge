@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AgentRead } from "../agentRead";
 import type { AgentClient, AgentStatus } from "../AgentSetup";
@@ -112,4 +112,61 @@ export function agentStatus(): Promise<AgentStatus> {
 
 export function configureAgent(client: AgentClient): Promise<void> {
   return invoke(client === "claude_code" ? "configure_claude_code" : "configure_claude_desktop");
+}
+
+/** The edge pill, a second small window docked to the right of the screen. */
+export type PillMode = "collapsed" | "expanded" | "captured";
+
+export function pillSetState(state: PillMode): Promise<void> {
+  return invoke("pill_set_state", { state });
+}
+
+/** Moves the pill `top` logical pixels below the top of its screen. */
+export function pillSetTop(state: PillMode, top: number): Promise<void> {
+  return invoke("pill_set_top", { state, top });
+}
+
+export function showMainWindow(): Promise<void> {
+  return invoke("show_main_window");
+}
+
+/** Captures the window in front; the result arrives as a `shortcut-capture` event. */
+export function captureFront(): Promise<void> {
+  return invoke("capture_front");
+}
+
+/** The capture card of the pill tells the canvas what to do with the capture just made. */
+export type PillRequest =
+  | { kind: "pick" }
+  | { kind: "paste" }
+  | { kind: "undo" }
+  /** The pill just opened and wants the canvas summary. */
+  | { kind: "hello" }
+  | { kind: "instructions"; text: string };
+
+export function sendPillRequest(request: PillRequest): Promise<void> {
+  return emit("pill-request", request);
+}
+
+export function onPillRequest(handler: (request: PillRequest) => void): Promise<UnlistenFn> {
+  return listen<PillRequest>("pill-request", (e) => handler(e.payload));
+}
+
+/** How many elements carry instructions: the canvas tells the pill after every change. */
+export function sendCanvasSummary(instructions: number): Promise<void> {
+  return emit("canvas-summary", { instructions });
+}
+
+export function onCanvasSummary(handler: (instructions: number) => void): Promise<UnlistenFn> {
+  return listen<{ instructions: number }>("canvas-summary", (e) => handler(e.payload.instructions));
+}
+
+/** A capture that failed in the main window (Cmd+Shift+X or the pill's button). */
+export function onCaptureFailed(handler: (message: string) => void): Promise<UnlistenFn> {
+  return listen<string>("shortcut-capture-failed", (e) => handler(e.payload));
+}
+
+/** A capture made while the pill is on screen, for its card. */
+export function onCaptured(handler: (capture: ShortcutCapture) => void): Promise<UnlistenFn> {
+  return listen<ShortcutCapture>("shortcut-capture", (e) => handler(e.payload));
 }
