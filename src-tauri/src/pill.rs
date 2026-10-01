@@ -27,7 +27,7 @@ pub struct Rect {
 pub fn size(state: PillState) -> (f64, f64) {
     match state {
         PillState::Collapsed => (14.0, 72.0),
-        PillState::Expanded => (232.0, 262.0),
+        PillState::Expanded => (280.0, 310.0),
         PillState::Captured => (280.0, 330.0),
     }
 }
