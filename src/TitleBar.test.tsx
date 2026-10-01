@@ -1,7 +1,8 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRead } from "./agentRead";
 import type { AgentStatus } from "./AgentSetup";
+import type { ExportSettings } from "./canvas/exportOptions";
 import TitleBar from "./TitleBar";
 
 const NOW = new Date(2026, 9, 1, 14, 10).getTime();
@@ -30,9 +31,65 @@ function setup(lastRead: AgentRead | null) {
       onAgent={() => {}}
       exportLabel="Export canvas"
       onExport={() => {}}
+      exportSettings={{ format: "png", quality: "high" }}
+      onExportSettings={() => {}}
     />,
   );
 }
+
+function setupExport(settings: ExportSettings) {
+  const onExportSettings = vi.fn();
+  render(
+    <TitleBar
+      folder="p"
+      path="/p"
+      onChangeFolder={() => {}}
+      saved={null}
+      agentStatus={status}
+      lastRead={null}
+      onAgent={() => {}}
+      exportLabel="Export canvas"
+      onExport={() => {}}
+      exportSettings={settings}
+      onExportSettings={onExportSettings}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Export options" }));
+  return onExportSettings;
+}
+
+describe("TitleBar export options", () => {
+  it("offers PNG, JPG and WebP, the current one pressed", () => {
+    setupExport({ format: "webp", quality: "high" });
+    expect(screen.getByRole("button", { name: "PNG" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "JPG" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "WebP" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("changes the format and keeps the quality", () => {
+    const onChange = setupExport({ format: "png", quality: "medium" });
+    fireEvent.click(screen.getByRole("button", { name: "JPG" }));
+    expect(onChange).toHaveBeenCalledWith({ format: "jpg", quality: "medium" });
+  });
+
+  it("changes the quality of a lossy format", () => {
+    const onChange = setupExport({ format: "jpg", quality: "high" });
+    fireEvent.click(screen.getByRole("button", { name: "Low" }));
+    expect(onChange).toHaveBeenCalledWith({ format: "jpg", quality: "low" });
+  });
+
+  it("says PNG is lossless and leaves its quality alone", () => {
+    setupExport({ format: "png", quality: "high" });
+    expect(screen.getByText("PNG keeps every pixel: quality applies to JPG and WebP.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Low" })).toBeDisabled();
+  });
+
+  it("closes on Escape", () => {
+    setupExport({ format: "png", quality: "high" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "JPG" })).toBeNull();
+  });
+});
 
 describe("TitleBar agent pill", () => {
   it("says connected until an agent has read the canvas", () => {
@@ -63,6 +120,8 @@ describe("TitleBar agent pill", () => {
         onAgent={() => {}}
         exportLabel={null}
         onExport={() => {}}
+        exportSettings={{ format: "png", quality: "high" }}
+        onExportSettings={() => {}}
       />,
     );
     expect(screen.getByRole("button", { name: "Connect AI" })).toBeInTheDocument();

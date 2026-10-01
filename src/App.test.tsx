@@ -127,8 +127,24 @@ describe("title bar", () => {
   it("exports from the title bar, labeled by the canvas selection", async () => {
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Export frame" }));
-    expect(exportSpy).toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: /^Export frame/ }));
+    expect(exportSpy).toHaveBeenCalledWith({ format: "png", quality: "high" });
+  });
+
+  it("exports in the chosen format and remembers it for next time", async () => {
+    mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
+    localStorage.clear();
+    const { unmount } = render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Export options" }));
+    fireEvent.click(screen.getByRole("button", { name: "JPG" }));
+    fireEvent.click(screen.getByRole("button", { name: "Medium" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Export frame/ }));
+    expect(exportSpy).toHaveBeenLastCalledWith({ format: "jpg", quality: "medium" });
+    unmount();
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Export frame/ }));
+    expect(exportSpy).toHaveBeenLastCalledWith({ format: "jpg", quality: "medium" });
+    localStorage.clear();
   });
 });
 

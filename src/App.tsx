@@ -3,6 +3,7 @@ import type { ClientResult } from "./agentCards";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
 import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
 import Home from "./Home";
+import { type ExportSettings, parseExportSettings } from "./canvas/exportOptions";
 import TitleBar from "./TitleBar";
 import { lastReadLine } from "./agentRead";
 import { useLastRead } from "./useLastRead";
@@ -17,6 +18,8 @@ import {
 } from "./services/backend";
 
 type ProjectState = { status: "loading" } | { status: "none" } | { status: "open"; root: string };
+
+const EXPORT_KEY = "screenforge.export";
 
 function folderName(root: string): string {
   return root.split("/").filter(Boolean).pop() ?? root;
@@ -35,6 +38,13 @@ export default function App() {
   // The canvas loads behind the home screen's "Opening…" card and is revealed once it has.
   const [loaded, setLoaded] = useState(false);
   const [exportLabel, setExportLabel] = useState<string | null>(null);
+  const [exportSettings, setExportSettings] = useState<ExportSettings>(() => {
+    try {
+      return parseExportSettings(localStorage.getItem(EXPORT_KEY));
+    } catch {
+      return parseExportSettings(null);
+    }
+  });
   const canvasControls = useRef<CanvasControls | null>(null);
 
   // A list that cannot be read is just an empty list: the home screen still opens folders.
@@ -121,7 +131,16 @@ export default function App() {
         lastRead={lastRead}
         onAgent={openAgents}
         exportLabel={exportLabel}
-        onExport={() => canvasControls.current?.exportPng()}
+        onExport={() => canvasControls.current?.exportPng(exportSettings)}
+        exportSettings={exportSettings}
+        onExportSettings={(next) => {
+          setExportSettings(next);
+          try {
+            localStorage.setItem(EXPORT_KEY, JSON.stringify(next));
+          } catch {
+            // Private window or blocked storage: the choice lasts until the app closes.
+          }
+        }}
       />
       <CanvasView
         key={project.root}

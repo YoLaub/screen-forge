@@ -3,6 +3,7 @@ import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AgentRead } from "../agentRead";
 import type { AgentClient, AgentStatus } from "../AgentSetup";
+import type { ExportFormat, ExportSettings } from "../canvas/exportOptions";
 import type { NodeRecord } from "../canvas/nodeRecord";
 import type { WindowInfo } from "../canvas/WindowPicker";
 
@@ -26,13 +27,20 @@ export async function pickFolder(): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
-/** Path chosen in the "Save as" dialog for a PNG export, null when cancelled. */
-export function pickPngPath(fileName: string): Promise<string | null> {
-  return save({ defaultPath: fileName, filters: [{ name: "PNG image", extensions: ["png"] }], title: "Export as PNG" });
+const FORMAT_NAME: Record<ExportFormat, string> = { png: "PNG", jpg: "JPG", webp: "WebP" };
+
+/** Path chosen in the "Save as" dialog for an image export, null when cancelled. */
+export function pickImagePath(fileName: string, format: ExportFormat): Promise<string | null> {
+  return save({
+    defaultPath: fileName,
+    filters: [{ name: `${FORMAT_NAME[format]} image`, extensions: [format] }],
+    title: `Export as ${FORMAT_NAME[format]}`,
+  });
 }
 
-export function exportPng(path: string, pngBase64: string): Promise<void> {
-  return invoke("export_png", { path, pngBase64 });
+/** Saves `pngBase64` (what the canvas rendered) at `path`, converted to the chosen format. */
+export function exportImage(path: string, pngBase64: string, { format, quality }: ExportSettings): Promise<void> {
+  return invoke("export_image", { path, pngBase64, format, quality });
 }
 
 /** The latest read of the canvas by an agent, null when none was recorded. */
