@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use base64::Engine;
 use rmcp::handler::server::{router::tool::ToolRouter, wrapper::Parameters};
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig};
-use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+use rmcp::service::RequestContext;
+use rmcp::{RoleServer, ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -37,15 +38,27 @@ impl ScreenForgeServer {
     #[tool(
         description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, text content, style (colors, stroke, radius, gradient, font), annotations and connections. Start here."
     )]
-    async fn get_canvas_snapshot(&self) -> CallToolResult {
-        output_result(tools::canvas_snapshot(&self.root))
+    async fn get_canvas_snapshot(&self, ctx: RequestContext<RoleServer>) -> CallToolResult {
+        let result = tools::canvas_snapshot(&self.root);
+        if let Ok(output) = &result {
+            self.record(&ctx, "get_canvas_snapshot", tools::snapshot_summary(output));
+        }
+        output_result(result)
     }
 
     #[tool(
         description = "Get one canvas node in detail: metadata, position, user instructions, connections, inline SVG and colors, plus its PNG render as an image. For a frame (a screen), the image is the whole screen and `children` lists its elements in reading order."
     )]
-    async fn get_node_detail(&self, Parameters(p): Parameters<NodeIdParams>) -> CallToolResult {
-        output_result(tools::node_detail(&self.root, &p.node_id))
+    async fn get_node_detail(
+        &self,
+        Parameters(p): Parameters<NodeIdParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        let result = tools::node_detail(&self.root, &p.node_id);
+        if let Ok(output) = &result {
+            self.record(&ctx, "get_node_detail", tools::detail_summary(output));
+        }
+        output_result(result)
     }
 
     #[tool(
@@ -54,8 +67,22 @@ impl ScreenForgeServer {
     async fn get_node_dependencies(
         &self,
         Parameters(p): Parameters<NodeIdParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> CallToolResult {
-        json_result(tools::node_dependencies(&self.root, &p.node_id))
+        let result = tools::node_dependencies(&self.root, &p.node_id);
+        if result.is_ok() {
+            let summary = tools::dependencies_summary(&self.root, &p.node_id);
+            self.record(&ctx, "get_node_dependencies", summary);
+        }
+        json_result(result)
+    }
+}
+
+impl ScreenForgeServer {
+    /// Notes that the agent behind `ctx` just read the canvas, for the app to show.
+    fn record(&self, ctx: &RequestContext<RoleServer>, tool: &str, summary: tools::ReadSummary) {
+        let client = ctx.client_info().map(|info| info.name);
+        tools::record_read(&self.root, tool, client, summary);
     }
 }
 
@@ -107,10 +134,27 @@ mod tests {
     use tempfile::TempDir;
 
     async fn call(root: &std::path::Path, tool: &'static str, args: Value) -> CallToolResult {
+        call_as(root, tool, args, None).await
+    }
+
+    /// Like `call`, from an MCP client that names itself `client` (Claude Code does).
+    async fn call_as(
+        root: &std::path::Path,
+        tool: &'static str,
+        args: Value,
+        client: Option<&str>,
+    ) -> CallToolResult {
         let (server_io, client_io) = tokio::io::duplex(1 << 20);
         let server = ScreenForgeServer::new(root.to_path_buf());
         tokio::spawn(async move { server.serve(server_io).await.unwrap().waiting().await });
-        let client = ().serve(client_io).await.unwrap();
+        let info = match client {
+            Some(name) => rmcp::model::ClientConfig::new(
+                rmcp::model::ClientCapabilities::default(),
+                Implementation::new(name, "9.9.9"),
+            ),
+            None => rmcp::model::ClientConfig::default(),
+        };
+        let client = info.serve(client_io).await.unwrap();
         let mut params = CallToolRequestParams::new(tool);
         if let Value::Object(map) = args {
             params = params.with_arguments(map);
@@ -265,5 +309,73 @@ mod tests {
             result.content[0].as_text().unwrap().text,
             "Node not found: ghost"
         );
+    }
+
+    fn plain_node(id: &str, instructions: &str) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::VectorDrawing,
+            name: format!("Node {id}"),
+            dimensions: Dimensions { width: 10.0, height: 10.0 },
+            position: None,
+            parent: None,
+            group: None,
+            text: None,
+            style: None,
+            colors_detected: vec![],
+            connections: vec![],
+            user_instructions: instructions.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_read_is_recorded_with_the_agent_and_how_much_it_saw() {
+        let dir = project();
+        write_node(dir.path(), &plain_node("no_notes", "")).unwrap();
+        write_node(dir.path(), &plain_node("more_notes", "Round the corners")).unwrap();
+        call_as(dir.path(), "get_canvas_snapshot", json!({}), Some("claude-code")).await;
+        let read = sf_core::reads::read_last_read(dir.path()).expect("the read is recorded");
+        assert_eq!(read.tool, "get_canvas_snapshot");
+        assert_eq!(read.client.as_deref(), Some("claude-code"));
+        assert_eq!((read.nodes, read.with_instructions), (3, 2));
+        assert!(read.at_ms > 1_700_000_000_000);
+    }
+
+    #[tokio::test]
+    async fn a_node_read_counts_that_one_node() {
+        let dir = project();
+        write_node(dir.path(), &plain_node("no_notes", "")).unwrap();
+        call(dir.path(), "get_node_detail", json!({ "node_id": "login_error" })).await;
+        let read = sf_core::reads::read_last_read(dir.path()).unwrap();
+        assert_eq!((read.tool.as_str(), read.nodes, read.with_instructions), ("get_node_detail", 1, 1));
+        call(dir.path(), "get_node_dependencies", json!({ "node_id": "no_notes" })).await;
+        let read = sf_core::reads::read_last_read(dir.path()).unwrap();
+        assert_eq!((read.tool.as_str(), read.nodes, read.with_instructions), ("get_node_dependencies", 1, 0));
+    }
+
+    #[tokio::test]
+    async fn a_failed_call_is_not_a_read() {
+        let dir = project();
+        let result = call(dir.path(), "get_node_detail", json!({ "node_id": "nope" })).await;
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(sf_core::reads::read_last_read(dir.path()), None);
+    }
+
+    #[tokio::test]
+    async fn a_read_of_a_folder_without_a_canvas_leaves_it_untouched() {
+        let dir = TempDir::new().unwrap();
+        let result = call(dir.path(), "get_canvas_snapshot", json!({})).await;
+        assert_eq!(result.is_error, Some(true));
+        assert!(!sf_core::project_dir(dir.path()).exists());
+    }
+
+    #[tokio::test]
+    async fn failing_to_record_never_fails_the_call() {
+        let dir = project();
+        // A folder where the file should go: the atomic replace cannot succeed.
+        fs::create_dir(sf_core::project_dir(dir.path()).join(sf_core::reads::LAST_READ_FILE_NAME)).unwrap();
+        let result = call(dir.path(), "get_canvas_snapshot", json!({})).await;
+        assert_ne!(result.is_error, Some(true));
+        assert_eq!(text_json(&result)["nodes"].as_array().unwrap().len(), 1);
     }
 }

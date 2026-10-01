@@ -64,6 +64,12 @@ pub fn load_canvas(root: PathBuf) -> Result<Option<String>, String> {
     project::load_canvas(&root).map_err(|e| e.to_string())
 }
 
+/// The latest read of the canvas by an agent, as recorded by `screenforge-mcp`.
+#[tauri::command]
+pub fn last_agent_read(root: PathBuf) -> Option<sf_core::reads::AgentRead> {
+    sf_core::reads::read_last_read(&root)
+}
+
 #[tauri::command]
 pub fn get_last_project(app: tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
@@ -131,6 +137,27 @@ mod tests {
         let path = std::env::temp_dir().join(format!("sf-export-bad-{}.png", std::process::id()));
         assert!(write_png(&path, "not base64!").is_err());
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn reports_the_last_agent_read_in_the_shape_the_front_reads() {
+        let dir = std::env::temp_dir().join(format!("sf-read-{}", std::process::id()));
+        std::fs::create_dir_all(sf_core::project_dir(&dir)).unwrap();
+        assert_eq!(last_agent_read(dir.clone()), None);
+        let read = sf_core::reads::AgentRead {
+            at_ms: 1_700_000_000_000,
+            tool: "get_canvas_snapshot".into(),
+            client: Some("claude-code".into()),
+            nodes: 8,
+            with_instructions: 4,
+        };
+        sf_core::reads::write_last_read(&dir, &read).unwrap();
+        let value = serde_json::to_value(last_agent_read(dir.clone()).unwrap()).unwrap();
+        assert_eq!(
+            value,
+            json!({ "at_ms": 1_700_000_000_000u64, "tool": "get_canvas_snapshot", "client": "claude-code", "nodes": 8, "with_instructions": 4 })
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

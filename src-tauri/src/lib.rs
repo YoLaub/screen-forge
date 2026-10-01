@@ -41,6 +41,7 @@ pub fn run() {
             project::save_canvas,
             project::load_canvas,
             project::export_png,
+            project::last_agent_read,
             project::get_last_project,
             project::set_last_project,
             capture::list_windows,

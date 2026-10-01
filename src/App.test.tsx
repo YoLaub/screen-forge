@@ -10,6 +10,7 @@ vi.mock("./services/backend", () => ({
   pickFolder: vi.fn(),
   agentStatus: vi.fn(),
   configureAgent: vi.fn(),
+  lastAgentRead: vi.fn(),
 }));
 
 const exportSpy = vi.fn();
@@ -48,6 +49,7 @@ const mocked = vi.mocked(backend);
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocked.lastAgentRead.mockResolvedValue(null);
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
 
@@ -89,6 +91,7 @@ describe("App", () => {
 describe("title bar", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocked.lastAgentRead.mockResolvedValue(null);
     mocked.getLastProject.mockResolvedValue("/work/my-app");
   });
 
@@ -129,6 +132,7 @@ describe("title bar", () => {
 describe("Connect AI from the title bar", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocked.lastAgentRead.mockResolvedValue(null);
     mocked.getLastProject.mockResolvedValue("/work/my-app");
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
@@ -170,6 +174,7 @@ describe("Connect AI from the title bar", () => {
 describe("Home and opening", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocked.lastAgentRead.mockResolvedValue(null);
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
 
@@ -222,5 +227,44 @@ describe("Home and opening", () => {
     await screen.findByTestId("canvas-view");
     fireEvent.keyDown(window, { key: "o" });
     expect(mocked.pickFolder).not.toHaveBeenCalled();
+  });
+});
+
+describe("Last read by an agent", () => {
+  const justNow = () => ({ at_ms: Date.now() - 5_000, tool: "get_canvas_snapshot", client: "claude-code", nodes: 8, with_instructions: 4 });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    mocked.agentStatus.mockResolvedValue({ ...NOT_CONNECTED, claude_code: { available: true, registered: "/app/screenforge-mcp" } });
+    mocked.lastAgentRead.mockResolvedValue(null);
+  });
+
+  it("asks for the open project's last read", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Claude Code connected" });
+    expect(mocked.lastAgentRead).toHaveBeenCalledWith("/work/my-app");
+  });
+
+  it("shows in the title bar that the canvas was just read", async () => {
+    mocked.lastAgentRead.mockResolvedValue(justNow());
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Claude Code read the canvas · just now" })).toBeInTheDocument();
+  });
+
+  it("tells in Connect AI who read, when and how much", async () => {
+    const read = justNow();
+    mocked.lastAgentRead.mockResolvedValue(read);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /read the canvas/ }));
+    const at = new Date(read.at_ms);
+    const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    expect(await screen.findByText(`Claude Code last read the canvas at ${clock} · 8 elements, 4 with instructions`)).toBeInTheDocument();
+  });
+
+  it("keeps saying that no agent has read the canvas while none did", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Claude Code connected" }));
+    expect(await screen.findByText("No agent has read this canvas yet.")).toBeInTheDocument();
   });
 });

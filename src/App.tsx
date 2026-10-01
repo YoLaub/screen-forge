@@ -4,7 +4,8 @@ import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
 import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
 import Home from "./Home";
 import TitleBar from "./TitleBar";
-import { agentPill } from "./titleBarState";
+import { lastReadLine } from "./agentRead";
+import { useLastRead } from "./useLastRead";
 import {
   agentStatus,
   configureAgent,
@@ -27,6 +28,7 @@ export default function App() {
   // The title bar shows the agent state without opening the dialog.
   const [agentState, setAgentState] = useState<AgentStatus | null>(null);
   const [saved, setSaved] = useState<Date | null>(null);
+  const lastRead = useLastRead(project.status === "open" ? project.root : null);
   // The canvas loads behind the home screen's "Opening…" card and is revealed once it has.
   const [loaded, setLoaded] = useState(false);
   const [exportLabel, setExportLabel] = useState<string | null>(null);
@@ -101,7 +103,8 @@ export default function App() {
         path={project.root}
         onChangeFolder={openFolder}
         saved={saved}
-        agent={agentState && agentPill(agentState)}
+        agentStatus={agentState}
+        lastRead={lastRead}
         onAgent={openAgents}
         exportLabel={exportLabel}
         onExport={() => canvasControls.current?.exportPng()}
@@ -124,6 +127,7 @@ export default function App() {
           status={agents}
           project={{ name: folderName(project.root), path: project.root }}
           results={agentResults}
+          lastRead={lastRead && lastReadLine(lastRead, Date.now())}
           busy={agentBusy}
           onConfigure={configure}
           onClose={() => setAgents(null)}

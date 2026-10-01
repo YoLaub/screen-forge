@@ -1,11 +1,13 @@
 //! ScreenForge project-folder format and node model.
 //!
 //! The app writes a project's canvas under `<project root>/.screenforge/`; the MCP
-//! server only ever reads it. This crate is the single owner of that layout.
+//! server only ever reads it, apart from `reads`: the one small file in which it notes the
+//! last time an agent read the canvas. This crate is the single owner of that layout.
 
 pub mod app_state;
 pub mod node;
 pub mod project;
+pub mod reads;
 pub mod store;
 
 use std::path::{Path, PathBuf};
