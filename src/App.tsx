@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ClientResult } from "./agentCards";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
 import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
 import TitleBar from "./TitleBar";
@@ -11,11 +12,6 @@ import {
   setLastProject,
 } from "./services/backend";
 
-const CONNECTED_HINT: Record<AgentClient, string> = {
-  claude_code: "Connected for every project. Restart running Claude Code sessions to use it.",
-  claude_desktop: "Connected. Quit and reopen Claude Desktop to load it.",
-};
-
 type ProjectState = { status: "loading" } | { status: "none" } | { status: "open"; root: string };
 
 function folderName(root: string): string {
@@ -26,7 +22,7 @@ export default function App() {
   const [project, setProject] = useState<ProjectState>({ status: "loading" });
   const [agents, setAgents] = useState<AgentStatus | null>(null);
   const [agentBusy, setAgentBusy] = useState<AgentClient | null>(null);
-  const [agentMessages, setAgentMessages] = useState<Partial<Record<AgentClient, string>>>({});
+  const [agentResults, setAgentResults] = useState<Partial<Record<AgentClient, ClientResult>>>({});
   // The title bar shows the agent state without opening the dialog.
   const [agentState, setAgentState] = useState<AgentStatus | null>(null);
   const [saved, setSaved] = useState<Date | null>(null);
@@ -55,7 +51,7 @@ export default function App() {
   }
 
   async function openAgents() {
-    setAgentMessages({});
+    setAgentResults({});
     setAgents(await refreshAgents());
   }
 
@@ -63,9 +59,9 @@ export default function App() {
     setAgentBusy(client);
     try {
       await configureAgent(client);
-      setAgentMessages((m) => ({ ...m, [client]: CONNECTED_HINT[client] }));
+      setAgentResults((r) => ({ ...r, [client]: { connected: true } }));
     } catch (error) {
-      setAgentMessages((m) => ({ ...m, [client]: `Failed: ${String(error)}` }));
+      setAgentResults((r) => ({ ...r, [client]: { error: String(error) } }));
     } finally {
       setAgentBusy(null);
       setAgents(await refreshAgents());
@@ -119,7 +115,8 @@ export default function App() {
       {agents && (
         <AgentSetup
           status={agents}
-          messages={agentMessages}
+          project={{ name: folderName(project.root), path: project.root }}
+          results={agentResults}
           busy={agentBusy}
           onConfigure={configure}
           onClose={() => setAgents(null)}

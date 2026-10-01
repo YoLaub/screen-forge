@@ -9,6 +9,7 @@ vi.mock("./services/backend", () => ({
   setLastProject: vi.fn(),
   pickFolder: vi.fn(),
   agentStatus: vi.fn(),
+  configureAgent: vi.fn(),
 }));
 
 const exportSpy = vi.fn();
@@ -116,5 +117,46 @@ describe("title bar", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Export frame" }));
     expect(exportSpy).toHaveBeenCalled();
+  });
+});
+
+describe("Connect AI from the title bar", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
+  });
+
+  it("opens the dialog on the open project and connects a client", async () => {
+    mocked.configureAgent.mockResolvedValue(undefined);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect AI" }));
+    expect(await screen.findByText("my-app/.screenforge")).toBeInTheDocument();
+    mocked.agentStatus.mockResolvedValue({ ...NOT_CONNECTED, claude_code: { available: true, registered: "/app/screenforge-mcp" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect Claude Code" }));
+    expect(mocked.configureAgent).toHaveBeenCalledWith("claude_code");
+    expect(await screen.findByText(/Restart running Claude Code sessions/)).toBeInTheDocument();
+    expect(screen.getByTestId("claude_code-state")).toHaveTextContent("Connected");
+  });
+
+  it("shows why connecting failed and lets the user retry", async () => {
+    mocked.configureAgent.mockRejectedValue("permission denied");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect AI" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Claude Code" }));
+    expect(await screen.findByText("Couldn’t connect: permission denied")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry Claude Code" })).toBeEnabled();
+  });
+
+  it("forgets the last attempt when the dialog is opened again", async () => {
+    mocked.configureAgent.mockRejectedValue("permission denied");
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect AI" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Claude Code" }));
+    await screen.findByText("Couldn’t connect: permission denied");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect AI" }));
+    expect(await screen.findByRole("button", { name: "Connect Claude Code" })).toBeEnabled();
+    expect(screen.queryByText(/Couldn’t connect/)).not.toBeInTheDocument();
   });
 });
