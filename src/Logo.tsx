@@ -1,13 +1,13 @@
 import { BRAND } from "./theme/tokens";
 
 /** The ScreenForge mark: a gradient tile with a capture corner and a dot, from the mockup. */
-export default function Logo({ size = 20 }: { size?: number }) {
+export default function Logo({ size = 20, glow = false }: { size?: number; glow?: boolean }) {
   const u = size / 20;
   return (
     <span
       aria-hidden
       className="relative inline-block flex-none"
-      style={{ width: size, height: size, borderRadius: 6 * u, background: BRAND.gradient }}
+      style={{ width: size, height: size, borderRadius: 6 * u, background: BRAND.gradient, ...(glow && { boxShadow: BRAND.glow }) }}
     >
       <span
         className="absolute"

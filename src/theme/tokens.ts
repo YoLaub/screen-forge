@@ -92,6 +92,8 @@ export function cssVariables(theme: Partial<Theme>): string {
 export const BRAND = {
   gradient: "linear-gradient(135deg,#1fc8dc 0%,#4b5cf0 55%,#c23bd0 100%)",
   mark: "#ffffff",
+  /** Glow under the large logo of the home screen. */
+  glow: "0 8px 24px rgba(75,92,240,.3)",
 };
 
 /** Hue step between consecutive apps: the golden angle, so any run of apps is well spread. */

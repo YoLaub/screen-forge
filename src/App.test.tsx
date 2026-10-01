@@ -18,6 +18,7 @@ const exportSpy = vi.fn();
 vi.mock("./canvas/CanvasView", () => ({
   default: function FakeCanvas(props: {
     root: string;
+    onLoaded?: () => void;
     onSaved?: (at: Date) => void;
     onExportLabel?: (label: string) => void;
     controls?: { current: { exportPng: () => Promise<void> } | null };
@@ -27,7 +28,12 @@ vi.mock("./canvas/CanvasView", () => ({
       props.onExportLabel?.("Export frame");
       if (props.controls) props.controls.current = { exportPng: exportSpy };
     }, []);
-    return <div data-testid="canvas-view">{props.root}</div>;
+    return (
+      <div data-testid="canvas-view">
+        {props.root}
+        <button onClick={props.onLoaded}>finish loading</button>
+      </div>
+    );
   },
 }));
 
@@ -158,5 +164,63 @@ describe("Connect AI from the title bar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Connect AI" }));
     expect(await screen.findByRole("button", { name: "Connect Claude Code" })).toBeEnabled();
     expect(screen.queryByText(/Couldn’t connect/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Home and opening", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
+  });
+
+  it("shows the home screen when no project was opened, without the title bar", async () => {
+    mocked.getLastProject.mockResolvedValue(null);
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "ScreenForge" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export frame" })).not.toBeInTheDocument();
+  });
+
+  it("covers the workspace with Opening… until the canvas has loaded", async () => {
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    render(<App />);
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening my-app…");
+    fireEvent.click(screen.getByRole("button", { name: "finish loading" }));
+    expect(screen.queryByText(/Opening my-app/)).not.toBeInTheDocument();
+  });
+
+  it("shows Opening… again when another folder is picked", async () => {
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    mocked.pickFolder.mockResolvedValue("/work/other");
+    mocked.setLastProject.mockResolvedValue(undefined);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "finish loading" }));
+    fireEvent.click(screen.getByRole("button", { name: /my-app/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening other…");
+  });
+
+  it("opens the folder picker with Cmd+O from the home screen", async () => {
+    mocked.getLastProject.mockResolvedValue(null);
+    mocked.pickFolder.mockResolvedValue(null);
+    render(<App />);
+    await screen.findByRole("heading", { name: "ScreenForge" });
+    fireEvent.keyDown(window, { key: "o", metaKey: true });
+    expect(mocked.pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the folder picker with Cmd+O from the workspace too", async () => {
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    mocked.pickFolder.mockResolvedValue(null);
+    render(<App />);
+    await screen.findByTestId("canvas-view");
+    fireEvent.keyDown(window, { key: "O", metaKey: true });
+    expect(mocked.pickFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a plain O to the Ellipse tool", async () => {
+    mocked.getLastProject.mockResolvedValue("/work/my-app");
+    render(<App />);
+    await screen.findByTestId("canvas-view");
+    fireEvent.keyDown(window, { key: "o" });
+    expect(mocked.pickFolder).not.toHaveBeenCalled();
   });
 });
