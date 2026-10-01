@@ -317,6 +317,13 @@ describe("Recent projects", () => {
     expect(screen.queryByText("Recent")).not.toBeInTheDocument();
   });
 
+  it("shows the home screen even if the backend answers with something that is not a list", async () => {
+    mocked.recentProjects.mockResolvedValue(null as never);
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Open a folder" })).toBeInTheDocument();
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument();
+  });
+
   it("keeps listing them under the Opening card when the last project reopens at start", async () => {
     mocked.getLastProject.mockResolvedValue("/Users/me/dev/acme-dashboard");
     render(<App />);

@@ -39,7 +39,7 @@ export default function App() {
 
   // A list that cannot be read is just an empty list: the home screen still opens folders.
   const refreshRecent = useCallback(() => {
-    recentProjects().then(setRecent, () => setRecent([]));
+    recentProjects().then((list) => setRecent(Array.isArray(list) ? list : []), () => setRecent([]));
   }, []);
 
   const refreshAgents = async () => {

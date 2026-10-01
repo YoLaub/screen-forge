@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { dayTimeLabel } from "../dates";
 import { type Link, addLink, removeLink, updateLink } from "./links";
 import type { NodeKind } from "./nodeRecord";
 import type { NodeStyle } from "./style";
@@ -19,6 +20,10 @@ export interface InspectorNode {
   styleApplies?: StyleApplies;
   /** Captures: image size in pixels. */
   size?: { width: number; height: number };
+  /** Captures: the app whose window was captured, when it was a window capture. */
+  source?: string;
+  /** Captures: when it was captured or added (Unix ms), when known. */
+  capturedAt?: number;
   /** Frames: how many elements they contain. */
   childCount?: number;
 }
@@ -199,10 +204,22 @@ export default function NodeInspector({ node, others, onChange, onCollapse }: Pr
         <Section>
           <div className="grid grid-cols-[78px_minmax(0,1fr)] gap-2 text-[11.5px] text-tx2">
             <span className="col-span-2 text-xs font-semibold text-tx">Capture</span>
+            {(node.source || node.capturedAt !== undefined) && (
+              <>
+                <span>Source</span>
+                <span className="text-tx">{node.source ?? "Pasted or dropped image"}</span>
+              </>
+            )}
             {node.size && (
               <>
                 <span>Size</span>
                 <span className="font-mono text-[11px] text-tx">{`${node.size.width} × ${node.size.height}`}</span>
+              </>
+            )}
+            {node.capturedAt !== undefined && (
+              <>
+                <span>Captured</span>
+                <span className="text-tx">{dayTimeLabel(node.capturedAt, Date.now())}</span>
               </>
             )}
             <span className="col-span-2 text-[11px] leading-[1.45] text-tx3">Captures have no style. Press C to cut a piece out.</span>

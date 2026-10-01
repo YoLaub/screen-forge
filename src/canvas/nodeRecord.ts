@@ -20,6 +20,10 @@ export interface NodeRecord {
   position?: { x: number; y: number };
   parent?: string;
   group?: GroupRef;
+  /** Captures: the app whose window was captured. */
+  source?: string;
+  /** Captures: when the image was captured or added, ISO 8601 UTC. */
+  captured_at?: string;
   text?: string;
   style?: NodeStyle;
   colors_detected: string[];
@@ -44,6 +48,10 @@ export interface SfProps {
   sfShape?: "arrow" | "cross";
   /** Group the node belongs to (Cmd+G). */
   sfGroup?: GroupRef;
+  /** Captures: the app whose window was captured (not set for pasted or dropped images). */
+  sfSource?: string;
+  /** Captures: when the image was captured or added to the canvas (Unix ms). */
+  sfCapturedAt?: number;
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
@@ -58,6 +66,8 @@ export const SF_PROPS: (keyof SfProps)[] = [
   "sfLocked",
   "sfShape",
   "sfGroup",
+  "sfSource",
+  "sfCapturedAt",
 ];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
@@ -111,6 +121,8 @@ export function toNodeRecord(
     ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
     ...(parent && { parent }),
     ...(obj.sfGroup && { group: obj.sfGroup }),
+    ...(obj.sfSource && { source: obj.sfSource }),
+    ...(obj.sfCapturedAt !== undefined && { captured_at: new Date(obj.sfCapturedAt).toISOString() }),
     ...(text !== undefined && { text }),
     ...(style && Object.keys(style).length > 0 && { style }),
     colors_detected: style ? colorsOf(style) : [],

@@ -28,3 +28,8 @@ export function dayLabel(atMs: number, nowMs: number): string {
   if (days === 1) return "Yesterday";
   return at.getFullYear() === now.getFullYear() ? dayMonth(at) : `${dayMonth(at)} ${at.getFullYear()}`;
 }
+
+/** "Today, 14:01", "Yesterday, 09:30" or "12 Sep, 16:30": the day then the time. */
+export function dayTimeLabel(atMs: number, nowMs: number): string {
+  return `${dayLabel(atMs, nowMs)}, ${clock(new Date(atMs))}`;
+}

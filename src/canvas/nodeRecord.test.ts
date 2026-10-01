@@ -144,3 +144,35 @@ describe("toNodeRecord groups", () => {
     expect(toNodeRecord(obj).group).toEqual({ id: "grp_1", name: "Login form" });
   });
 });
+
+describe("toNodeRecord captures", () => {
+  const capture = {
+    sfId: "cap_1",
+    sfKind: "capture" as const,
+    sfName: "Safari — Sign in",
+    sfInstructions: "",
+    width: 1280,
+    height: 864,
+    scaleX: 1,
+    scaleY: 1,
+  };
+
+  it("tells the agent which app a capture comes from and when, as an ISO time", () => {
+    const at = Date.UTC(2026, 9, 1, 14, 1, 0);
+    const record = toNodeRecord({ ...capture, sfSource: "Safari", sfCapturedAt: at });
+    expect(record.source).toBe("Safari");
+    expect(record.captured_at).toBe("2026-10-01T14:01:00.000Z");
+  });
+
+  it("leaves both out when they are not known (pasted image, canvas saved before)", () => {
+    const record = toNodeRecord(capture);
+    expect(record).not.toHaveProperty("source");
+    expect(record).not.toHaveProperty("captured_at");
+  });
+
+  it("keeps the time of an image that was pasted or dropped, without inventing an app", () => {
+    const record = toNodeRecord({ ...capture, sfCapturedAt: Date.UTC(2026, 9, 1, 8, 0, 0) });
+    expect(record.captured_at).toBe("2026-10-01T08:00:00.000Z");
+    expect(record).not.toHaveProperty("source");
+  });
+});

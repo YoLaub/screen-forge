@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { dayTimeLabel } from "../dates";
 import NodeInspector, { type InspectorNode } from "./NodeInspector";
 
 const node: InspectorNode = {
@@ -129,5 +130,30 @@ describe("NodeInspector", () => {
     expect(hide).toHaveAttribute("title", "Hide inspector (⇧⌘H hides both panels)");
     fireEvent.click(hide);
     expect(onCollapse).toHaveBeenCalled();
+  });
+
+  describe("capture details", () => {
+    const at = new Date(2026, 9, 1, 14, 1).getTime();
+
+    it("shows the source app, the size and when it was captured", () => {
+      setup({ ...node, source: "Safari", capturedAt: at });
+      const panel = screen.getByText("Capture").parentElement!;
+      expect(panel).toHaveTextContent("SourceSafari");
+      expect(panel).toHaveTextContent("Size1280 × 864");
+      expect(panel).toHaveTextContent(`Captured${dayTimeLabel(at, Date.now())}`);
+    });
+
+    it("says an image without an app was pasted or dropped, and still gives its time", () => {
+      setup({ ...node, capturedAt: at });
+      expect(screen.getByText("Pasted or dropped image")).toBeInTheDocument();
+      expect(screen.queryByText("Safari")).not.toBeInTheDocument();
+    });
+
+    it("shows only the size for a capture from before this was recorded", () => {
+      setup(node);
+      expect(screen.queryByText("Source")).not.toBeInTheDocument();
+      expect(screen.queryByText("Captured")).not.toBeInTheDocument();
+      expect(screen.getByText("1280 × 864")).toBeInTheDocument();
+    });
   });
 });
