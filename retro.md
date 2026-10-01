@@ -189,3 +189,15 @@
   windows. Look at what the existing code guarantees before adding a native workaround.
 - The window geometry is a pure function with tests; the native behavior (hover, desktops,
   full-screen apps) cannot be tested here and was left to the owner.
+
+## v0.2.0 (2026-10-01)
+- The UI redesign (issues #1 to #16), the edge pill and the export formats shipped together.
+  The folder drop (#17) was dropped after reading wry's macOS code.
+- Native window behavior (a pill that follows desktops and full-screen apps, window lists that
+  hide empty overlays) could not be checked without someone looking at the screen. Each defect
+  came from the owner's screenshots, not from tests: ask for a screenshot of the failing state
+  before guessing a second fix.
+- A window flag that is set is not a window flag that works: reading the flags back showed the
+  right values while the pill still vanished on other desktops. Only a real NSPanel fixed it.
+- Packaged builds change the app identity: Screen Recording must be granted again after every
+  `pnpm bundle`, and an old copy of the app may still be the one running.
