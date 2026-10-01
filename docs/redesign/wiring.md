@@ -53,7 +53,7 @@ the owner).
 
 ## Decisions (owner, 2026-09-30)
 
-- **Edge pill** — later: framed as its own feature after the redesign, not in this lot.
+- **Edge pill** — later, then built on 2026-10-01 at the owner's request (card `docs/index/edge-pill.md`).
 - **"MCP server running"** — show what is true: "MCP server ready" when the binary is
   found (red dot when it is missing), plus the project path.
 - **Theme** — follows the macOS appearance, no manual switch.

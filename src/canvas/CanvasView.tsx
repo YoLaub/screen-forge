@@ -25,7 +25,9 @@ import {
   exportPng,
   listWindows,
   loadCanvas,
+  onPillRequest,
   onShortcutCapture,
+  sendCanvasSummary,
   openScreenCaptureSettings,
   pickPngPath,
   saveCanvas,
@@ -500,6 +502,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
+  const openPickerRef = useRef<() => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string, source?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
   const [cutMode, setCutMode] = useState<CutMode>("lasso");
@@ -640,6 +643,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
     // Arrow objects come and go on every redraw: only node changes trigger a save.
     // Layer rows, top to bottom: the pins are numbered in this order.
     let layerItems: LayerRow["item"][] = [];
+    let lastSummary = -1;
     const refreshLayers = () => {
       const nodes = canvas.getObjects().filter(isNode);
       const parents = layoutOf(nodes);
@@ -660,6 +664,12 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       );
       layerItems = rows.map((r) => r.item);
       setLayers(rows);
+      // The edge pill shows how many elements the agent has instructions for.
+      const instructed = rows.filter((r) => r.item.instructed).length;
+      if (instructed !== lastSummary) {
+        lastSummary = instructed;
+        sendCanvasSummary(instructed).catch(() => {});
+      }
     };
     // Instruction pins follow every render (pan, zoom, moves); React only
     // re-renders when a pin actually changed.
@@ -1567,8 +1577,11 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       image.set({ left: at.x, top: at.y });
       canvas.add(image);
       canvas.setActiveObject(image);
+      return image;
     };
-    addImageRef.current = (dataUrl, name, source) => addImage(dataUrl, canvas.getVpCenter(), name, source);
+    addImageRef.current = async (dataUrl, name, source) => {
+      await addImage(dataUrl, canvas.getVpCenter(), name, source);
+    };
     const addCapture = async (file: File, at: Point) => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -1610,16 +1623,50 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
     container.addEventListener("dragover", onDragOver);
     container.addEventListener("drop", onDrop);
     // Cmd+Shift+X captures the window in front without bringing ScreenForge forward.
+    // The last capture is what the edge pill's card talks about (instructions, undo).
+    let lastCapture: (FabricObject & SfProps) | null = null;
     const unlistenShortcut = onShortcutCapture(
       ({ window, png_base64 }) =>
         addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window), window.app_name)
-          .then(() => push({ kind: "ok", title: "Captured", message: captureName(window) }))
+          .then((image) => {
+            lastCapture = image as unknown as FabricObject & SfProps;
+            push({ kind: "ok", title: "Captured", message: captureName(window) });
+          })
           .catch((error) => push(failureToast("Capture failed", error))),
       (message) => push(failureToast("Capture failed", message)),
     );
+    const pasteFromClipboard = async () => {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (!type) continue;
+        await addCapture(new File([await item.getType(type)], "clipboard", { type }), canvas.getVpCenter());
+        return;
+      }
+      push(failureToast("Paste failed", "There is no image on the clipboard."));
+    };
+    const unlistenPill = onPillRequest((request) => {
+      if (request.kind === "hello") {
+        lastSummary = -1;
+        refreshLayers();
+      } else if (request.kind === "pick") {
+        openPickerRef.current();
+      } else if (request.kind === "paste") {
+        pasteFromClipboard().catch((error) => push(failureToast("Paste failed", error)));
+      } else if (request.kind === "instructions" && lastCapture) {
+        lastCapture.sfInstructions = request.text;
+        refreshLayers();
+        commit();
+      } else if (request.kind === "undo" && lastCapture) {
+        canvas.remove(lastCapture);
+        lastCapture = null;
+        commit();
+      }
+    });
 
     return () => {
       unlistenShortcut.then((unlisten) => unlisten());
+      unlistenPill.then((unlisten) => unlisten());
       resize.disconnect();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -1655,6 +1702,8 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       push(failureToast("Could not list windows", error));
     }
   }
+
+  openPickerRef.current = openPicker;
 
   function closePicker() {
     pickerTicket.current++;

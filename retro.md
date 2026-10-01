@@ -182,3 +182,10 @@
   window setting is all or nothing (the handler always returns `true`). Check what a
   platform API can really do before coding a feature that depends on it.
 - A web drop of a folder gives its name, never its path; only the native event gives paths.
+
+## edge-pill (2026-10-01)
+- The feared problem (a click on the pill stealing focus and changing what gets captured)
+  was already solved by a rule written for the shortcut: the capture skips ScreenForge's own
+  windows. Look at what the existing code guarantees before adding a native workaround.
+- The window geometry is a pure function with tests; the native behavior (hover, desktops,
+  full-screen apps) cannot be tested here and was left to the owner.
