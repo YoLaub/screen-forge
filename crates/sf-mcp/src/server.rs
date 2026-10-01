@@ -36,7 +36,7 @@ impl ScreenForgeServer {
     }
 
     #[tool(
-        description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, text content, style (colors, stroke, radius, gradient, font), annotations and connections. Start here."
+        description = "Overview of the ScreenForge canvas: an image of the whole canvas, the screens (frames) with their elements in reading order, and every node with its name, position, size, parent frame, text content, style (colors, stroke, radius, gradient, font), annotations and connections, and for captures the source app and when it was captured. Start here."
     )]
     async fn get_canvas_snapshot(&self, ctx: RequestContext<RoleServer>) -> CallToolResult {
         let result = tools::canvas_snapshot(&self.root);
@@ -189,6 +189,8 @@ mod tests {
                 position: None,
                 parent: None,
                 group: None,
+                source: None,
+                captured_at: None,
                 text: None,
                 style: None,
                 colors_detected: vec![],
@@ -320,6 +322,8 @@ mod tests {
             position: None,
             parent: None,
             group: None,
+            source: None,
+            captured_at: None,
             text: None,
             style: None,
             colors_detected: vec![],

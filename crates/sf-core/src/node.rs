@@ -21,6 +21,12 @@ pub struct Node {
     /// Group the user put this node in: its members are meant to be read together.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<Group>,
+    /// Captures: the app whose window was captured ("Safari"). Absent for pasted or dropped images.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Captures: when the image was captured or added, as an ISO 8601 UTC time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured_at: Option<String>,
     /// Content of a text element, readable by the agent without OCR.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -143,6 +149,8 @@ mod tests {
             position: None,
             parent: None,
             group: None,
+            source: None,
+            captured_at: None,
             text: None,
             style: None,
             colors_detected: vec!["#3B82F6".into(), "#FFFFFF".into()],
@@ -191,6 +199,19 @@ mod tests {
     }
 
     #[test]
+    fn captures_say_which_app_they_come_from_and_when() {
+        let node = Node {
+            source: Some("Safari".into()),
+            captured_at: Some("2026-10-01T14:01:00.000Z".into()),
+            ..sample()
+        };
+        let value = serde_json::to_value(&node).unwrap();
+        assert_eq!(value["source"], "Safari");
+        assert_eq!(value["captured_at"], "2026-10-01T14:01:00.000Z");
+        assert_eq!(serde_json::from_value::<Node>(value).unwrap(), node);
+    }
+
+    #[test]
     fn round_trips_through_json() {
         let json = serde_json::to_string(&sample()).unwrap();
         assert_eq!(serde_json::from_str::<Node>(&json).unwrap(), sample());
@@ -207,6 +228,7 @@ mod tests {
         }))
         .unwrap();
         assert!(node.colors_detected.is_empty());
+        assert_eq!((node.source, node.captured_at), (None, None));
         assert_eq!(node.user_instructions, "");
         assert_eq!(node.connections[0].trigger, None);
         assert_eq!(node.connections[0].payload_type, None);
@@ -225,6 +247,8 @@ mod tests {
             position: Some(Position { x: -40.0, y: 10.5 }),
             parent: None,
             group: None,
+            source: None,
+            captured_at: None,
             text: None,
             style: None,
             colors_detected: vec![],
