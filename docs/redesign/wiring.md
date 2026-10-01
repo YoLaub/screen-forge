@@ -35,7 +35,7 @@ the owner).
 | connect | client states and buttons | `agent_status`, `configure_*` | yes | yes | front | "Connecting…" = busy flag, "Connection failed" = error string |
 | connect | "last read the canvas at 14:05 · 8 elements, 4 with instructions" | none | no | no | **gap** | same source as the title bar note |
 | home | Recent projects (name, path, when) | `get_last_project` only | yes | one path, no date | **gap** | `sf-core::app_state` keeps a single path |
-| home | "or drop one here" (folder) | none | no | no | **gap** | `dragDropEnabled: false`; web drops carry no path, needs the Tauri drag-drop event |
+| home | "or drop one here" (folder) | none | no | no | **dropped** | folder drop and web image drop cannot both work (RD-17 abandoned, see Decisions) |
 | home | ⌘O, "Opening … / Loading 8 elements" | `load_canvas` | yes | count after load | front | |
 | pill | whole panel | none | no | no | **decide** | new non-activating always-on-top window: new feature and architecture choice |
 | pill | "Added next to “Login screen”" | none | no | no | **decide** | placement rule not specified (captures land at the viewport center today) |
@@ -49,8 +49,7 @@ the owner).
    (`sfSource`, `sfCapturedAt`), exported in `node.json` so the agent sees them too.
 3. **Recent projects** — `sf-core::app_state` keeps a list (path, last opened) instead of
    one path; a command returns it.
-4. **Folder drop on Home** — listen to the Tauri drag-drop event on the Home screen only
-   (the canvas keeps its web drop for images).
+4. ~~Folder drop on Home~~ — abandoned, see Decisions.
 
 ## Decisions (owner, 2026-09-30)
 
@@ -64,3 +63,13 @@ the owner).
 - **Fonts** (default) — Geist and Geist Mono (SIL OFL) bundled, not loaded from Google Fonts.
 - **⌘↵ in the instructions** (default, to confirm) — leaves the field, like Esc, without
   discarding the text.
+- **Folder drop on Home (RD-17), abandoned 2026-10-01.** The issue assumed the Tauri
+  drag-drop event could be listened to on Home only, while the canvas kept its web image
+  drop. It cannot: with `dragDropEnabled: true`, Tauri's handler in `tauri-runtime-wry`
+  always returns `true`, and wry's macOS code then swallows every drop (`performDragOperation`
+  answers YES instead of passing it to the page). A web drop, on the other hand, gives a
+  dropped folder's name only, never its path. So a folder drop means giving up the web image
+  drop on the canvas and rewriting it on native paths (images dragged out of a browser page
+  carry no file path and would stop working). The owner chose not to: folders open with
+  "Open a folder", Cmd+O and the Recent list, and image drop stays as it is. Reopen only if
+  Tauri gains a way to switch drag-drop at runtime, or to pass a drop to the page.

@@ -174,3 +174,11 @@
   (jsdom does no stacking): it is covered by clicking the button in the E2E.
 - A per-app color from a hash of its name gave three greens. Spreading hues over the
   apps actually listed is better than hashing when the set is small and known.
+
+## folder-drop (2026-10-01, abandoned)
+- An issue rested on an assumption nobody had checked: that the Tauri drag-drop event could
+  be had on one screen while web drops kept working on another. Reading wry's macOS
+  `drag_drop.rs` and the handler in `tauri-runtime-wry` took ten minutes and showed the
+  window setting is all or nothing (the handler always returns `true`). Check what a
+  platform API can really do before coding a feature that depends on it.
+- A web drop of a folder gives its name, never its path; only the native event gives paths.
