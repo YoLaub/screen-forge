@@ -26,6 +26,7 @@ const CARD_MS = 10_000;
 function Action({
   label,
   hint,
+  detail,
   primary,
   busy,
   onClick,
@@ -33,6 +34,8 @@ function Action({
 }: {
   label: string;
   hint?: string;
+  /** One line saying what the action does, shown under the label. */
+  detail: string;
   primary?: boolean;
   busy?: boolean;
   onClick: () => void;
@@ -42,15 +45,23 @@ function Action({
     <button
       type="button"
       aria-label={label}
-      title={hint ? `${label} (${hint})` : label}
       onClick={onClick}
-      className={`grid h-[38px] w-[38px] place-items-center rounded-[10px] ${primary ? "bg-acc text-acc-tx" : "text-tx2 hover:bg-hover"}`}
+      className={`flex w-full items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left ${primary ? "bg-acc text-acc-tx" : "text-tx hover:bg-hover"}`}
     >
-      {busy ? (
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70" />
-      ) : (
-        children
-      )}
+      <span className="grid h-6 w-6 flex-none place-items-center">
+        {busy ? (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70" />
+        ) : (
+          children
+        )}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className="flex items-center justify-between gap-2 font-semibold">
+          {label}
+          {hint && <span className="font-mono text-[10px] font-medium opacity-70">{hint}</span>}
+        </span>
+        <span className={`text-[11px] ${primary ? "opacity-80" : "text-tx3"}`}>{detail}</span>
+      </span>
     </button>
   );
 }
@@ -187,42 +198,50 @@ export default function Pill() {
       )}
 
       {mode === "expanded" && (
-        <div className="flex h-full w-[52px] flex-col items-center gap-1 rounded-l-[14px] border border-r-0 border-line2 bg-panel pb-2.5 pt-2">
+        <div className="flex h-full w-full flex-col gap-0.5 rounded-l-[14px] border border-r-0 border-line2 bg-panel px-2 pb-2 pt-1.5">
           <div
-            title="Drag to move"
+            title="Drag to move up or down"
             onMouseDown={startDrag}
-            className="mb-1.5 h-[3px] w-[18px] cursor-ns-resize rounded-sm bg-line2"
-          />
-          <div className="mb-1.5">
-            <Logo size={26} />
+            className="flex cursor-ns-resize items-center gap-2 px-1 pb-1.5 pt-1"
+          >
+            <Logo size={20} />
+            <span className="flex-1 font-semibold">ScreenForge</span>
+            <span className="h-[3px] w-[18px] rounded-sm bg-line2" />
           </div>
-          <Action label="Capture frontmost window" hint="⌘⇧X" primary busy={busy} onClick={capture}>
+          <Action
+            label="Capture frontmost window"
+            hint="⌘⇧X"
+            detail="Adds the window in front to the canvas"
+            primary
+            busy={busy}
+            onClick={capture}
+          >
             <svg {...ICON}>
               <path d="M2 5V3.5c0-.8.7-1.5 1.5-1.5H5M11 2h1.5c.8 0 1.5.7 1.5 1.5V5M14 11v1.5c0 .8-.7 1.5-1.5 1.5H11M5 14H3.5c-.8 0-1.5-.7-1.5-1.5V11" />
               <circle cx="8" cy="8" r="2.2" />
             </svg>
           </Action>
-          <Action label="Choose a window…" onClick={() => askCanvas("pick")}>
+          <Action label="Choose a window…" detail="Pick which window to capture" onClick={() => askCanvas("pick")}>
             <svg {...ICON}>
               <rect x="1.5" y="3" width="9" height="7" rx="1.5" />
               <rect x="5.5" y="6" width="9" height="7" rx="1.5" />
             </svg>
           </Action>
-          <Action label="Paste image from clipboard" onClick={() => askCanvas("paste")}>
+          <Action label="Paste image from clipboard" detail="Adds the copied image to the canvas" onClick={() => askCanvas("paste")}>
             <svg {...ICON}>
               <rect x="3" y="3" width="10" height="11" rx="1.5" />
               <path d="M6 2.5h4v2H6z" />
             </svg>
           </Action>
-          <Action label="Open ScreenForge canvas" onClick={() => showMainWindow().catch(() => {})}>
+          <Action label="Open ScreenForge canvas" detail="Shows the main window" onClick={() => showMainWindow().catch(() => {})}>
             <svg {...ICON}>
               <path d="M5 2v12M11 2v12M2 5h12M2 11h12" />
             </svg>
           </Action>
-          <div className="my-1.5 h-px w-[22px] bg-line2" />
-          <div title={agentLine} className="flex flex-col items-center gap-1 py-1">
-            <span className={`h-2 w-2 rounded-full ${pill.connected ? "bg-ok shadow-[0_0_0_3px_var(--ok-soft)]" : "bg-tx3"}`} />
-            <span className="font-mono text-[10px] font-semibold text-ag">{instructions ?? "–"}</span>
+          <div className="my-1 h-px bg-line2" />
+          <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-tx2">
+            <span className={`h-2 w-2 flex-none rounded-full ${pill.connected ? "bg-ok shadow-[0_0_0_3px_var(--ok-soft)]" : "bg-tx3"}`} />
+            <span className="flex-1 leading-tight">{agentLine}</span>
           </div>
         </div>
       )}
