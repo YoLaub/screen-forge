@@ -1,13 +1,15 @@
 import type { WindowInfo } from "./canvas/WindowPicker";
 import type { AgentPill } from "./titleBarState";
 
-export type PillMode = "collapsed" | "expanded" | "captured";
-export type PillEvent = "enter" | "leave" | "captured" | "dismiss";
+export type PillMode = "collapsed" | "expanded" | "captured" | "picking";
+export type PillEvent = "enter" | "leave" | "captured" | "dismiss" | "pick";
 
 /** What the pill shows next: a tab, the action bar on hover, or the card after a capture. */
 export function nextMode(mode: PillMode, event: PillEvent): PillMode {
   if (event === "captured") return "captured";
-  if (mode === "captured") return event === "dismiss" ? "collapsed" : "captured";
+  // The card and the window list stay until dismissed, whatever the pointer does.
+  if (mode === "captured" || mode === "picking") return event === "dismiss" ? "collapsed" : mode;
+  if (event === "pick") return mode === "expanded" ? "picking" : mode;
   if (event === "enter") return "expanded";
   if (event === "leave") return "collapsed";
   return mode;

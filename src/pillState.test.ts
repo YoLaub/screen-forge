@@ -26,6 +26,19 @@ describe("nextMode", () => {
   });
 });
 
+describe("nextMode, window list", () => {
+  it("opens the window list from the action bar and stays on it while the pointer leaves", () => {
+    expect(nextMode("expanded", "pick")).toBe("picking");
+    expect(nextMode("picking", "leave")).toBe("picking");
+    expect(nextMode("picking", "enter")).toBe("picking");
+  });
+
+  it("closes the list on dismiss and shows the card once a window is captured", () => {
+    expect(nextMode("picking", "dismiss")).toBe("collapsed");
+    expect(nextMode("picking", "captured")).toBe("captured");
+  });
+});
+
 describe("agentTooltip", () => {
   it("says who is connected and how many elements carry instructions", () => {
     expect(agentTooltip({ connected: true, client: "Claude Code" }, 4)).toBe(

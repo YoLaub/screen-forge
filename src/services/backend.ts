@@ -115,7 +115,7 @@ export function configureAgent(client: AgentClient): Promise<void> {
 }
 
 /** The edge pill, a second small window docked to the right of the screen. */
-export type PillMode = "collapsed" | "expanded" | "captured";
+export type PillMode = "collapsed" | "expanded" | "captured" | "picking";
 
 export function pillSetState(state: PillMode): Promise<void> {
   return invoke("pill_set_state", { state });
@@ -135,9 +135,13 @@ export function captureFront(): Promise<void> {
   return invoke("capture_front");
 }
 
+/** Captures window `id`; the result arrives as a `shortcut-capture` event, like `captureFront`. */
+export function captureChosen(id: number): Promise<void> {
+  return invoke("capture_chosen", { id });
+}
+
 /** The capture card of the pill tells the canvas what to do with the capture just made. */
 export type PillRequest =
-  | { kind: "pick" }
   | { kind: "paste" }
   | { kind: "undo" }
   /** The pill just opened and wants the canvas summary. */

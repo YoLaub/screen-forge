@@ -18,6 +18,8 @@ decisions:
   - "2026-10-01: follows desktops and apps, not physical screens: it sits on the screen of the main window, else the primary one"
   - "2026-10-01: closing the main window hides it (canvas stays alive for the pill); the Dock icon or the pill brings it back"
   - "2026-10-01: transparency needs Tauri's macOSPrivateApi (Cargo feature + tauri.conf.json); fine for a direct download, not for the Mac App Store"
+  - "2026-10-01: the pill is a real NSPanel (tauri-nspanel, MIT): a plain window with spaces flags did not follow the desktops"
+  - "2026-10-01: Choose a window lists the windows inside the pill (capture_chosen command): showing the main window first could switch desktop and the capture failed with 'not on the current desktop any more'"
   - "2026-10-01: left out of the mockup: the capture flash overlay and the line Added next to <frame> (no placement rule exists; captures land at the view center)"
 ---
 
