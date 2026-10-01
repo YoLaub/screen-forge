@@ -251,7 +251,11 @@ function toInspectorNode(obj: FabricObject & SfProps, pin: number | undefined, c
     kind: obj.sfKind,
     typeLabel: typeOf(obj),
     pin,
-    ...(obj.sfKind === "capture" && { size: { width: Math.round(obj.width), height: Math.round(obj.height) } }),
+    ...(obj.sfKind === "capture" && {
+      size: { width: Math.round(obj.width), height: Math.round(obj.height) },
+      source: obj.sfSource,
+      capturedAt: obj.sfCapturedAt,
+    }),
     ...(obj.sfKind === "frame" && { childCount }),
     name: obj.sfName,
     instructions: obj.sfInstructions,
@@ -496,7 +500,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
-  const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
+  const addImageRef = useRef<(dataUrl: string, name?: string, source?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
   const [cutMode, setCutMode] = useState<CutMode>("lasso");
   // Layers dock from 1200 px and float over the canvas below (mockup 1d).
@@ -1340,7 +1344,14 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
           const center = pieceCenter(img, box);
           const piece = target ?? (await FabricImage.fromURL(dataUrl));
           if (target) await target.setSrc(dataUrl);
-          else tagAsNode(canvas, piece, "capture", pieceName);
+          else {
+            tagAsNode(canvas, piece, "capture", pieceName);
+            // A piece comes from the same capture: same app, same moment.
+            Object.assign(piece, {
+              ...(img.sfSource && { sfSource: img.sfSource }),
+              ...(img.sfCapturedAt !== undefined && { sfCapturedAt: img.sfCapturedAt }),
+            });
+          }
           piece.set({ left: center.x, top: center.y, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle, flipX: img.flipX, flipY: img.flipY });
           piece.setCoords();
           return piece;
@@ -1546,16 +1557,18 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       commit();
     });
 
-    // A captured, pasted or dropped image becomes a capture node.
-    const addImage = async (dataUrl: string, at: Point, name?: string) => {
+    // A captured, pasted or dropped image becomes a capture node. A window capture says
+    // which app it shows (`source`); a pasted or dropped one has no app, only its time.
+    const addImage = async (dataUrl: string, at: Point, name?: string, source?: string) => {
       const image = await FabricImage.fromURL(dataUrl);
       tagAsNode(canvas, image, "capture", name);
+      Object.assign(image, { sfCapturedAt: Date.now(), ...(source && { sfSource: source }) });
       // Fabric 7 objects are positioned by their center (originX/Y default to "center").
       image.set({ left: at.x, top: at.y });
       canvas.add(image);
       canvas.setActiveObject(image);
     };
-    addImageRef.current = (dataUrl, name) => addImage(dataUrl, canvas.getVpCenter(), name);
+    addImageRef.current = (dataUrl, name, source) => addImage(dataUrl, canvas.getVpCenter(), name, source);
     const addCapture = async (file: File, at: Point) => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -1599,7 +1612,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
     // Cmd+Shift+X captures the window in front without bringing ScreenForge forward.
     const unlistenShortcut = onShortcutCapture(
       ({ window, png_base64 }) =>
-        addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window))
+        addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window), window.app_name)
           .then(() => push({ kind: "ok", title: "Captured", message: captureName(window) }))
           .catch((error) => push(failureToast("Capture failed", error))),
       (message) => push(failureToast("Capture failed", message)),
@@ -1652,7 +1665,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
     closePicker();
     try {
       const png = await captureWindow(w.id);
-      await addImageRef.current(`data:image/png;base64,${png}`, captureName(w));
+      await addImageRef.current(`data:image/png;base64,${png}`, captureName(w), w.app_name);
     } catch (error) {
       push(failureToast("Capture failed", error));
     }
