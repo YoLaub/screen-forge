@@ -1,5 +1,6 @@
 mod agents;
 mod capture;
+mod export;
 mod pill;
 mod project;
 
@@ -87,7 +88,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             project::save_canvas,
             project::load_canvas,
-            project::export_png,
+            export::export_image,
             project::last_agent_read,
             project::get_last_project,
             project::set_last_project,

@@ -2,7 +2,43 @@ import Logo from "./Logo";
 import type { AgentRead } from "./agentRead";
 import type { AgentStatus } from "./AgentSetup";
 import { agentPill, savedLabel } from "./titleBarState";
+import { useEffect, useState } from "react";
+import { EXPORT_FORMATS, EXPORT_QUALITIES, type ExportFormat, type ExportQuality, type ExportSettings, usesQuality } from "./canvas/exportOptions";
 import { useNow } from "./useNow";
+
+const FORMAT_LABEL: Record<ExportFormat, string> = { png: "PNG", jpg: "JPG", webp: "WebP" };
+const QUALITY_LABEL: Record<ExportQuality, string> = { low: "Low", medium: "Medium", high: "High" };
+
+function Segments<T extends string>({
+  values,
+  labels,
+  current,
+  disabled,
+  onPick,
+}: {
+  values: T[];
+  labels: Record<T, string>;
+  current: T;
+  disabled?: boolean;
+  onPick: (value: T) => void;
+}) {
+  return (
+    <div className={`flex gap-0.5 rounded-lg bg-panel2 p-0.5 ${disabled ? "opacity-50" : ""}`}>
+      {values.map((v) => (
+        <button
+          key={v}
+          type="button"
+          disabled={disabled}
+          aria-pressed={v === current}
+          onClick={() => onPick(v)}
+          className={`h-6 flex-1 rounded-md px-2.5 text-xs font-medium ${v === current ? "bg-panel text-tx shadow-panel" : "text-tx2 hover:text-tx"}`}
+        >
+          {labels[v]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface Props {
   folder: string;
@@ -15,13 +51,24 @@ interface Props {
   onAgent: () => void;
   exportLabel: string | null;
   onExport: () => void;
+  exportSettings: ExportSettings;
+  onExportSettings: (settings: ExportSettings) => void;
 }
 
 /**
  * 44 px bar holding the macOS traffic lights (the native title bar is an overlay):
  * project, save state, agent state and the Export action. Empty space drags the window.
  */
-export default function TitleBar({ folder, path, onChangeFolder, saved, agentStatus, lastRead, onAgent, exportLabel, onExport }: Props) {
+export default function TitleBar({ folder, path, onChangeFolder, saved, agentStatus, lastRead, onAgent, exportLabel, onExport, exportSettings, onExportSettings }: Props) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  useEffect(() => {
+    if (!optionsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOptionsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [optionsOpen]);
   // Renewed here, not in App, so the minutes moving on redraw the title bar only.
   const now = useNow();
   const agent = agentStatus && agentPill(agentStatus, lastRead, now);
@@ -73,15 +120,51 @@ export default function TitleBar({ folder, path, onChangeFolder, saved, agentSta
         </button>
       )}
       {exportLabel && (
-        <button
-          onClick={onExport}
-          className="flex h-7 items-center gap-1.5 rounded-[7px] bg-acc px-[11px] font-semibold text-acc-tx hover:opacity-90"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M8 10V2.5M4.8 5.5L8 2.3l3.2 3.2M2.5 10.5v2c0 .6.4 1 1 1h9c.6 0 1-.4 1-1v-2" />
-          </svg>
-          {exportLabel}
-        </button>
+        <div className="relative flex">
+          <button
+            onClick={onExport}
+            className="flex h-7 items-center gap-1.5 rounded-l-[7px] bg-acc px-[11px] font-semibold text-acc-tx hover:opacity-90"
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M8 10V2.5M4.8 5.5L8 2.3l3.2 3.2M2.5 10.5v2c0 .6.4 1 1 1h9c.6 0 1-.4 1-1v-2" />
+            </svg>
+            {exportLabel}
+            <span className="font-mono text-[10px] font-medium opacity-75">{FORMAT_LABEL[exportSettings.format]}</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Export options"
+            aria-expanded={optionsOpen}
+            onClick={() => setOptionsOpen((open) => !open)}
+            className="grid h-7 w-6 place-items-center rounded-r-[7px] border-l border-acc-tx/25 bg-acc text-acc-tx hover:opacity-90"
+          >
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6l5 5 5-5" />
+            </svg>
+          </button>
+          {optionsOpen && (
+            <div className="absolute right-0 top-9 z-50 flex w-[236px] flex-col gap-2.5 rounded-[11px] border border-line2 bg-panel p-3 shadow-panel">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-tx3">Format</div>
+              <Segments
+                values={EXPORT_FORMATS}
+                labels={FORMAT_LABEL}
+                current={exportSettings.format}
+                onPick={(format) => onExportSettings({ ...exportSettings, format })}
+              />
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-tx3">Quality</div>
+              <Segments
+                values={EXPORT_QUALITIES}
+                labels={QUALITY_LABEL}
+                current={exportSettings.quality}
+                disabled={!usesQuality(exportSettings.format)}
+                onPick={(quality) => onExportSettings({ ...exportSettings, quality })}
+              />
+              {!usesQuality(exportSettings.format) && (
+                <div className="text-[11px] leading-snug text-tx3">PNG keeps every pixel: quality applies to JPG and WebP.</div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </header>
   );

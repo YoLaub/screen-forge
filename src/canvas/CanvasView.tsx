@@ -22,14 +22,14 @@ import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
   ensureScreenCaptureAccess,
-  exportPng,
+  exportImage,
   listWindows,
   loadCanvas,
   onPillRequest,
   onShortcutCapture,
   sendCanvasSummary,
   openScreenCaptureSettings,
-  pickPngPath,
+  pickImagePath,
   saveCanvas,
   type NodeExportDto,
 } from "../services/backend";
@@ -42,6 +42,7 @@ import InstructionPins, { type Pin } from "./InstructionPins";
 import { pinNumbers, pinPlacement } from "./pins";
 import { expandToGroups, newGroupId, withGroupRows } from "./groups";
 import { type ExportTarget, exportTarget } from "./exportImage";
+import { type ExportSettings, withExtension } from "./exportOptions";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
 import { type Box, type Pt, arrowHead, lockToAxis } from "./geometry";
@@ -475,7 +476,7 @@ function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): Fa
 
 /** What the app shell drives on the canvas (the Export button lives in the title bar). */
 export interface CanvasControls {
-  exportPng: () => Promise<void>;
+  exportPng: (settings: ExportSettings) => Promise<void>;
 }
 
 interface CanvasViewProps {
@@ -543,7 +544,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   const [booleanCount, setBooleanCount] = useState(0);
   const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
   const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
-  const exportRef = useRef<() => Promise<void>>(async () => {});
+  const exportRef = useRef<(settings: ExportSettings) => Promise<void>>(async () => {});
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
   const onLoadedRef = useRef(onLoaded);
@@ -554,7 +555,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   useEffect(() => {
     if (!controls) return;
     controls.current = {
-      exportPng: () => exportRef.current().catch((error) => push(failureToast("Export failed", error))),
+      exportPng: (settings) => exportRef.current(settings).catch((error) => push(failureToast("Export failed", error))),
     };
     return () => {
       controls.current = null;
@@ -818,7 +819,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       canvas.moveObjectTo(obj, canvas.getObjects().indexOf(neighbour));
       afterEditRef.current();
     };
-    exportRef.current = async () => {
+    exportRef.current = async (settings) => {
       const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
       const target = exportTarget(picked.map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName);
       const png = renderExport(canvas, target, picked);
@@ -826,9 +827,9 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
         push({ kind: "warn", title: "Nothing to export", message: "There is no visible element on the canvas yet." });
         return;
       }
-      const path = await pickPngPath(target.fileName);
+      const path = await pickImagePath(withExtension(target.fileName, settings.format), settings.format);
       if (!path) return;
-      await exportPng(path, png);
+      await exportImage(path, png, settings);
       push({ kind: "ok", title: "Exported", message: path.split("/").pop() });
     };
 
