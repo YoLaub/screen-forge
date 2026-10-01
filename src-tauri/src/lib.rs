@@ -44,6 +44,7 @@ pub fn run() {
             project::last_agent_read,
             project::get_last_project,
             project::set_last_project,
+            project::recent_projects,
             capture::list_windows,
             capture::capture_window,
             capture::ensure_screen_capture_access,
