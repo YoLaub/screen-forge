@@ -35,18 +35,20 @@ fn is_pickable(w: &RawWindow, own_pid: u32) -> bool {
         && w.info.height >= MIN_SIZE
 }
 
-/// Ids of the offered windows that share an app and a size with another one. Such
-/// stacks (a browser's hidden tabs) often hold windows with nothing to show.
+/// Ids of the offered windows that may hold nothing to show: the untitled ones (overlays
+/// such as a full-screen browser's toolbar) and those sharing an app and a size with
+/// another (a browser's hidden tabs).
 fn ambiguous_ids(raw: &[RawWindow], own_pid: u32) -> Vec<u32> {
     let pickable: Vec<&RawWindow> = raw.iter().filter(|w| is_pickable(w, own_pid)).collect();
     pickable
         .iter()
         .filter(|w| {
-            pickable
-                .iter()
-                .filter(|o| o.pid == w.pid && o.info.width == w.info.width && o.info.height == w.info.height)
-                .count()
-                > 1
+            w.info.title.is_empty()
+                || pickable
+                    .iter()
+                    .filter(|o| o.pid == w.pid && o.info.width == w.info.width && o.info.height == w.info.height)
+                    .count()
+                    > 1
         })
         .map(|w| w.info.id)
         .collect()
@@ -183,7 +185,7 @@ pub async fn list_windows() -> Result<Vec<WindowInfo>, String> {
             .filter_map(|w| read_window(w, &levels).ok())
             .collect();
         let own_pid = std::process::id();
-        // A stacked window that captures as empty is a hidden tab: not worth offering.
+        // A suspect window that captures as empty (hidden tab, overlay) is not worth offering.
         let hidden: Vec<u32> = ambiguous_ids(&raw, own_pid)
             .into_iter()
             .filter(|&id| capture_png(id).is_err())
@@ -432,6 +434,15 @@ mod tests {
             raw(4, "Notes", "Todo", 20),
         ];
         assert_eq!(ambiguous_ids(&raws, 99), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn untitled_windows_need_a_look() {
+        // Full-screen Chrome stacks untitled toolbar overlays over its real window.
+        let mut page = raw(2, "Chrome", "New tab", 10);
+        page.info.height = 801;
+        let raws = vec![raw(1, "Chrome", "", 10), page, raw(3, "Notes", "Todo", 20)];
+        assert_eq!(ambiguous_ids(&raws, 99), vec![1]);
     }
 
     #[test]
