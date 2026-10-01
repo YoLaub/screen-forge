@@ -35,6 +35,23 @@ fn is_pickable(w: &RawWindow, own_pid: u32) -> bool {
         && w.info.height >= MIN_SIZE
 }
 
+/// Ids of the offered windows that share an app and a size with another one. Such
+/// stacks (a browser's hidden tabs) often hold windows with nothing to show.
+fn ambiguous_ids(raw: &[RawWindow], own_pid: u32) -> Vec<u32> {
+    let pickable: Vec<&RawWindow> = raw.iter().filter(|w| is_pickable(w, own_pid)).collect();
+    pickable
+        .iter()
+        .filter(|w| {
+            pickable
+                .iter()
+                .filter(|o| o.pid == w.pid && o.info.width == w.info.width && o.info.height == w.info.height)
+                .count()
+                > 1
+        })
+        .map(|w| w.info.id)
+        .collect()
+}
+
 /// Windows worth offering in the picker, sorted by app then title.
 fn pickable_windows(raw: Vec<RawWindow>, own_pid: u32) -> Vec<WindowInfo> {
     let mut windows: Vec<WindowInfo> = raw
@@ -161,11 +178,18 @@ pub async fn list_windows() -> Result<Vec<WindowInfo>, String> {
         let windows = xcap::Window::all().map_err(|e| e.to_string())?;
         // A window that vanished while being listed is skipped, not an error.
         let levels = window_levels();
-        let raw = windows
+        let raw: Vec<RawWindow> = windows
             .iter()
             .filter_map(|w| read_window(w, &levels).ok())
             .collect();
-        Ok(pickable_windows(raw, std::process::id()))
+        let own_pid = std::process::id();
+        // A stacked window that captures as empty is a hidden tab: not worth offering.
+        let hidden: Vec<u32> = ambiguous_ids(&raw, own_pid)
+            .into_iter()
+            .filter(|&id| capture_png(id).is_err())
+            .collect();
+        let visible = raw.into_iter().filter(|w| !hidden.contains(&w.info.id)).collect();
+        Ok(pickable_windows(visible, own_pid))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -396,6 +420,34 @@ mod tests {
             levels.values().any(|&l| l > 0),
             "no menu bar or Dock: {levels:?}"
         );
+    }
+
+    #[test]
+    fn windows_stacked_at_the_same_size_by_one_app_need_a_look() {
+        // Chrome keeps one window per tab, all the size of the browser window.
+        let raws = vec![
+            raw(1, "Chrome", "Tab A", 10),
+            raw(2, "Chrome", "Tab B", 10),
+            raw(3, "Chrome", "Tab C", 10),
+            raw(4, "Notes", "Todo", 20),
+        ];
+        assert_eq!(ambiguous_ids(&raws, 99), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn windows_of_different_sizes_or_apps_need_no_look() {
+        let mut small = raw(2, "Chrome", "Popup", 10);
+        small.info.width = 300;
+        let raws = vec![raw(1, "Chrome", "Tab A", 10), small, raw(3, "Safari", "Tab A", 11)];
+        assert!(ambiguous_ids(&raws, 99).is_empty());
+    }
+
+    #[test]
+    fn our_own_and_minimized_windows_do_not_count_as_stacked() {
+        let mut minimized = raw(2, "Chrome", "Old", 10);
+        minimized.minimized = true;
+        let raws = vec![raw(1, "Chrome", "Tab A", 10), minimized, raw(3, "Chrome", "Own", 99)];
+        assert!(ambiguous_ids(&raws, 99).is_empty());
     }
 
     #[test]
