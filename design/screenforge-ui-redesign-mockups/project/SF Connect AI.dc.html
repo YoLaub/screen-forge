@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:540px;border-radius:14px;background:var(--panel);border:1px solid var(--line2);box-shadow:0 24px 60px rgba(0,0,0,.28),0 2px 6px rgba(0,0,0,.12);font-family:'Geist',-apple-system,sans-serif;font-size:12px;color:var(--tx);overflow:hidden">
+  <div style="padding:18px 18px 14px;display:flex;gap:12px;align-items:flex-start">
+    <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+      <div style="font:600 16px 'Geist',sans-serif">Connect AI agents</div>
+      <div style="color:var(--tx2);line-height:1.5;text-wrap:pretty">Registers ScreenForge's MCP server so the agent can read your canvas.</div>
+    </div>
+    <button style="width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:var(--tx3);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover)"><svg width="12" height="12" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.7"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+  </div>
+  <div style="margin:0 18px 14px;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--panel2);font-size:11.5px;color:var(--tx2)">
+    <span style="width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--okSoft)"></span>MCP server running<span style="flex:1"></span><span style="font:400 10.5px 'Geist Mono',monospace;color:var(--tx3)">acme-dashboard/.screenforge</span>
+  </div>
+  <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:10px">
+    <sc-for list="{{ clients }}" as="c" hint-placeholder-count="2">
+      <div style="border:1px solid var(--line2);border-radius:11px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px">
+          <span style="width:34px;height:34px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;color:var(--tx2);flex:none"><sc-if value="{{ c.term }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="2"></rect><path d="M4.5 6.5L7 8.5 4.5 10.5M8.5 10.5h3"></path></svg></sc-if><sc-if value="{{ c.app }}"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11" rx="2"></rect><path d="M1.5 5.5h13"></path></svg></sc-if></span>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+            <span style="font-weight:600;font-size:13px">{{ c.name }}</span>
+            <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:{{ c.stFg }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ c.stFg }}"></span>{{ c.status }}</span>
+          </div>
+          <button onClick="{{ c.act }}" disabled="{{ c.disabled }}" style="display:flex;align-items:center;gap:7px;height:30px;padding:0 13px;border-radius:8px;border:{{ c.btnBorder }};background:{{ c.btnBg }};color:{{ c.btnFg }};opacity:{{ c.btnOp }};font:600 12px 'Geist',sans-serif;cursor:pointer;white-space:nowrap"><sc-if value="{{ c.busy }}"><span style="width:11px;height:11px;border-radius:50%;border:2px solid rgba(127,127,127,.35);border-top-color:currentColor;box-sizing:border-box"></span></sc-if>{{ c.btn }}</button>
+        </div>
+        <sc-if value="{{ c.hasMsg }}">
+          <div style="padding:9px 12px;border-top:1px solid var(--line);background:{{ c.msgBg }};color:{{ c.msgFg }};font-size:11.5px;line-height:1.45;text-wrap:pretty">{{ c.msg }}</div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+  <div style="padding:11px 18px;border-top:1px solid var(--line);background:var(--panel2);display:flex;align-items:center;gap:8px;color:var(--tx2);font-size:11.5px">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--tx3)"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>
+    <span>{{ lastRead }}</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:600,&quot;height&quot;:460},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mixed&quot;,&quot;connecting&quot;,&quot;error&quot;],&quot;default&quot;:&quot;mixed&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const ST = {
+  none: ['Not installed', 'var(--tx3)'], off: ['Not connected', 'var(--tx2)'], busy: ['Connecting…', 'var(--acc)'],
+  on: ['Connected', 'var(--ok)'], other: ['Points to another server', 'var(--warn)'], fail: ['Connection failed', 'var(--warn)'],
+};
+class Component extends DCLogic {
+  state = this.props.state === 'connecting'
+    ? { cc: 'busy', cd: 'none', msg: { cd: 'Claude Desktop isn’t installed on this Mac.' } }
+    : this.props.state === 'error'
+    ? { cc: 'fail', cd: 'off', msg: { cc: 'Couldn’t write ~/.claude.json (permission denied). Check the file’s owner, then retry.' } }
+    : { cc: 'on', cd: 'other', msg: { cc: 'Connected. Start a new Claude Code session to pick it up.', cd: 'Registered to another ScreenForge server. Update to point it at this project.' } };
+  connect(k) {
+    this.setState(s => ({ [k]: 'busy', msg: { ...s.msg, [k]: '' } }));
+    setTimeout(() => this.setState(s => ({ [k]: 'on', msg: { ...s.msg, [k]: k === 'cc' ? 'Connected. Start a new Claude Code session to pick it up.' : 'Connected. Restart Claude Desktop to load the server.' } })), 1200);
+  }
+  renderVals() {
+    const mk = (k, name, term) => {
+      const st = this.state[k], [status, stFg] = ST[st];
+      const btn = { none: 'Connect', off: 'Connect', busy: 'Connecting…', on: 'Reconnect', other: 'Update', fail: 'Retry' }[st];
+      const primary = st === 'off' || st === 'other' || st === 'fail';
+      const msg = this.state.msg[k] || '';
+      const warn = st === 'other' || st === 'fail';
+      return { name, term, app: !term, status, stFg, btn, busy: st === 'busy', disabled: st === 'none' || st === 'busy',
+        btnBg: primary ? 'var(--acc)' : 'transparent', btnFg: primary ? 'var(--accTx)' : 'var(--tx)', btnBorder: primary ? '1px solid var(--acc)' : '1px solid var(--line2)', btnOp: st === 'none' ? 0.45 : 1,
+        act: () => this.connect(k), hasMsg: !!msg, msg, msgBg: warn ? 'var(--warnSoft)' : st === 'on' ? 'var(--okSoft)' : 'var(--panel2)', msgFg: warn ? 'var(--warn)' : st === 'on' ? 'var(--ok)' : 'var(--tx2)' };
+    };
+    return {
+      clients: [mk('cc', 'Claude Code', true), mk('cd', 'Claude Desktop', false)],
+      lastRead: this.state.cc === 'on' ? 'Claude Code last read the canvas at 14:05 · 8 elements, 4 with instructions' : 'No agent has read this canvas yet.',
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -128,3 +128,76 @@
   dev window still running old front code, a misread downscaled screenshot.
 - Still manual: the ad-hoc signed bundle loses its Screen Recording grant on
   every rebuild (next step: a stable local signing identity).
+
+## signing (2026-09-24, dropped)
+- A self-signed "ScreenForge Dev" identity signed the first build, then the
+  next rebuild triggered a keychain prompt: codesign needs the login keychain
+  password to reach the private key, and the owner does not know it (it can
+  differ from the macOS session password). The owner declined a dedicated
+  signing keychain; signing stays ad hoc. The certificate and its trust setting
+  were then removed from the login keychain (no keychain password needed).
+
+## text-truncation (2026-09-26)
+- Long texts were cut at the end on the canvas and in exports. Cause: Fabric
+  measures glyph widths at `CACHE_FONT_SIZE` (400 px) and scales them down,
+  but `system-ui` (SF Pro) uses optical sizing and draws tighter at 400 px:
+  boxes came out 3 to 6 % too narrow. Proven by `measureText` at 20 px vs
+  400 px / 20. Fix: Helvetica Neue for texts and frame labels, and saved
+  `system-ui` texts are moved to it on load. Avoid variable optical-size fonts
+  with Fabric.
+- The owner's canvas was read through `screenforge-mcp` to see the bug
+  (node PNG vs full text) before touching code.
+
+## theme-tokens (2026-09-30)
+- The dark canvas made the default drawing colors (dark navy pen, arrow and text)
+  nearly invisible. They are content saved for the agent, so they were kept out of
+  the theme; picking defaults readable on both backgrounds is a design question.
+- The repo color guard caught its own doc comment (example class names): a guard
+  scanning source text needs examples phrased so they do not match.
+
+## instruction-pins (2026-09-30)
+- The pins component was written together with its tests (not red first). Caught
+  up by mutating the component: 3 of 4 tests failed as they should. The repo color
+  guard also caught an rgba() in a Tailwind shadow class; it became a token.
+- Two false alarms in the E2E came from the script, not the app: a screenshot
+  taken before the hover state rendered, and an assumed pin number that changed
+  once a higher layer got instructions. Read the state before calling it a bug.
+
+## window-picker (2026-09-30)
+- Three defects in this and the previous issue were invisible to unit tests and to
+  screenshots, and showed up only when the E2E acted: a button covered by the canvas,
+  a Promise returned from an effect that blanked the app in Chrome 154, and keyboard
+  focus lost after a button unmounted. For any new interactive element, click it and
+  press keys in the browser before calling it done.
+- After each such defect a test now pins it (Promise-returning scrollIntoView, focus
+  after a state change, Escape from a button). The z-index one has no honest unit test
+  (jsdom does no stacking): it is covered by clicking the button in the E2E.
+- A per-app color from a hash of its name gave three greens. Spreading hues over the
+  apps actually listed is better than hashing when the set is small and known.
+
+## folder-drop (2026-10-01, abandoned)
+- An issue rested on an assumption nobody had checked: that the Tauri drag-drop event could
+  be had on one screen while web drops kept working on another. Reading wry's macOS
+  `drag_drop.rs` and the handler in `tauri-runtime-wry` took ten minutes and showed the
+  window setting is all or nothing (the handler always returns `true`). Check what a
+  platform API can really do before coding a feature that depends on it.
+- A web drop of a folder gives its name, never its path; only the native event gives paths.
+
+## edge-pill (2026-10-01)
+- The feared problem (a click on the pill stealing focus and changing what gets captured)
+  was already solved by a rule written for the shortcut: the capture skips ScreenForge's own
+  windows. Look at what the existing code guarantees before adding a native workaround.
+- The window geometry is a pure function with tests; the native behavior (hover, desktops,
+  full-screen apps) cannot be tested here and was left to the owner.
+
+## v0.2.0 (2026-10-01)
+- The UI redesign (issues #1 to #16), the edge pill and the export formats shipped together.
+  The folder drop (#17) was dropped after reading wry's macOS code.
+- Native window behavior (a pill that follows desktops and full-screen apps, window lists that
+  hide empty overlays) could not be checked without someone looking at the screen. Each defect
+  came from the owner's screenshots, not from tests: ask for a screenshot of the failing state
+  before guessing a second fix.
+- A window flag that is set is not a window flag that works: reading the flags back showed the
+  right values while the pill still vanished on other desktops. Only a real NSPanel fixed it.
+- Packaged builds change the app identity: Screen Recording must be granted again after every
+  `pnpm bundle`, and an old copy of the app may still be the one running.

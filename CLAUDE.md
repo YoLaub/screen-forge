@@ -10,6 +10,9 @@ annotations) and act on it locally, without copy-pasting screenshots.**
 
 Functional reference: `cahier_des_charges_extension_screenforge.md`. When this
 file and the spec disagree, this file wins (see the MCP decision below).
+UI reference (redesign, 2026-09-30): `design/screenforge-ui-redesign-mockups/project/ScreenForge Redesign.dc.html`
+and the `SF *.dc.html` files it imports, light and dark themes (`support.js` is the
+prototype runtime, not design). Inventory and wiring audit: `docs/redesign/`.
 
 ## Goals
 v1 is done (tagged `v0.1.0`, 2026-09-24):
@@ -22,8 +25,11 @@ v1 is done (tagged `v0.1.0`, 2026-09-24):
    order, text and styles: US-1 runs end to end.
 5. One-click MCP setup for Claude Code and Claude Desktop (US-3, without OAuth).
 
-Next: a stable local signing identity (so Screen Recording survives rebuilds).
-After that, candidates, none decided: the agent writing to the canvas
+Signing stays ad hoc (decided 2026-09-24): a stable local identity needed the
+login keychain password, which the owner does not have, and a dedicated signing
+keychain was declined. After each rebuild, reset and re-grant Screen Recording.
+
+Next candidates, none decided: the agent writing to the canvas
 (`create_node_annotation`, `update_node_preview`, corrections), region capture,
 OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
 
@@ -51,7 +57,10 @@ OCR, Windows and Linux, OAuth/Bearer and network transports. _à décider_.
   on every save, plus `canvas.png` (whole-canvas render). `screenforge-mcp`
   reads `nodes/` and `canvas.png` only and never parses Fabric JSON. It serves
   its working directory's project, else the project open in ScreenForge
-  (`sf-core::app_state`).
+  (`sf-core::app_state`). Its one write is `last_read.json`: after each successful
+  tool call it notes when, which agent and how many nodes it showed (latest only,
+  replaced atomically); the app polls it for the "read the canvas" note in the
+  title bar and the Connect AI footer. It never changes nodes or the canvas.
 - `screenforge-mcp` ships next to the app binary (`Contents/MacOS/`), declared as
   `externalBin` in `src-tauri/tauri.bundle.conf.json` only. The Connect AI panel
   registers it: Claude Code via `claude mcp add --scope user`, Claude Desktop by

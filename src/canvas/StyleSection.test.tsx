@@ -41,7 +41,7 @@ describe("StyleSection", () => {
 
   it("turns a solid fill into a linear gradient starting from it", () => {
     const onStyle = setup(base);
-    fireEvent.change(screen.getByLabelText("Fill type"), { target: { value: "linear" } });
+    fireEvent.click(screen.getByRole("button", { name: "Linear" }));
     expect(onStyle).toHaveBeenLastCalledWith({
       stroke: "#6B7280",
       stroke_width: 1,
@@ -66,5 +66,33 @@ describe("StyleSection", () => {
     const onStyle = setup({ ...base, opacity: 0.5 });
     fireEvent.change(screen.getByLabelText("Opacity"), { target: { value: "100" } });
     expect(onStyle).toHaveBeenLastCalledWith({ ...base });
+  });
+
+  it("picks the fill with segments, the active one pressed", () => {
+    setup(base);
+    expect(screen.getByRole("button", { name: "Solid" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "None" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("sets the text weight with Regular / Bold segments", () => {
+    const onStyle = setup({ fill: "#111827", font_size: 20 }, { fill: true, radius: false, text: true });
+    fireEvent.click(screen.getByRole("button", { name: "Bold" }));
+    expect(onStyle).toHaveBeenLastCalledWith({ fill: "#111827", font_size: 20, font_weight: "bold" });
+  });
+
+  it("shows the opacity as a percentage", () => {
+    setup({ ...base, opacity: 0.4 });
+    expect(screen.getByText("40%")).toBeInTheDocument();
+  });
+
+  it("gives a text one color, no fill modes and no stroke (mockup)", () => {
+    const onStyle = setup({ fill: "#111827", font_size: 20 }, { fill: true, radius: false, text: true });
+    expect(screen.getByLabelText("Text color")).toHaveValue("#111827");
+    expect(screen.queryByRole("button", { name: "Solid" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Stroke width")).not.toBeInTheDocument();
+    const color = screen.getByLabelText("Text color");
+    fireEvent.change(color, { target: { value: "#e8411f" } });
+    fireEvent.keyDown(color, { key: "Enter" });
+    expect(onStyle).toHaveBeenLastCalledWith({ fill: "#E8411F", font_size: 20 });
   });
 });

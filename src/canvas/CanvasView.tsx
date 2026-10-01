@@ -1,4 +1,5 @@
 import {
+  ActiveSelection,
   Canvas,
   Ellipse,
   FabricImage,
@@ -11,38 +12,66 @@ import {
   Path,
   Point,
   Polygon,
+  Polyline,
   Rect,
+  util,
   type TMat2D,
 } from "fabric";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useEffect, useRef, useState } from "react";
 import {
   captureWindow,
   ensureScreenCaptureAccess,
+  exportImage,
   listWindows,
   loadCanvas,
+  onPillRequest,
   onShortcutCapture,
+  sendCanvasSummary,
   openScreenCaptureSettings,
+  pickImagePath,
   saveCanvas,
   type NodeExportDto,
 } from "../services/backend";
 import { createAutosave } from "./autosave";
+import { type MenuAction, type MenuTargets, menuItems, pasteDelta } from "./contextMenu";
+import { duplicateProps } from "./duplicate";
+import { bezierPoint, gridBackground, linkCurve, selectionOverlay } from "./canvasVisuals";
+import { flattenScale, mergedNodeProps } from "./flatten";
+import InstructionPins, { type Pin } from "./InstructionPins";
+import { pinNumbers, pinPlacement } from "./pins";
+import { expandToGroups, newGroupId, withGroupRows } from "./groups";
+import { type ExportTarget, exportTarget } from "./exportImage";
+import { type ExportSettings, withExtension } from "./exportOptions";
 import { createHistory } from "./history";
 import { dataUrlToBase64, wrapSvg } from "./exportNode";
-import { type Box, arrowBetween, arrowHead } from "./geometry";
+import { type Box, type Pt, arrowHead, lockToAxis } from "./geometry";
 import { firstImageFile } from "./imageFile";
 import { type Anchor, type HandleSide, hitAnchor, hitHandle, moveAnchor, moveHandle, smoothAnchor, toSvgPath } from "./penPath";
 import { type StyledLike, readStyle, toFabricProps } from "./style";
 import type { StyleApplies } from "./StyleSection";
 import { type BooleanOp, booleanShapes } from "./booleans";
 import { assignParents, descendants, renderScale, unionBox } from "./layout";
-import { type LayerRow, layerRows, lockProps } from "./layers";
+import { type LayerRow, hasInstructions, layerIcon, layerRows, layersLayout, lockProps, typeLabel } from "./layers";
 import LayersPanel from "./LayersPanel";
 import { pruneLinks } from "./links";
 import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeInspector";
-import WindowPicker, { captureName, type WindowInfo } from "./WindowPicker";
+import WindowPicker, { type PickerState, captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
-import { type DrawingTool, SHAPE_NAMES, type Tool, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
-import { nextZoom } from "./viewport";
+import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
+import PanelOpener from "./PanelOpener";
+import { type PanelsState, browserStorage, isTogglePanelsKey, readPanels, toggleAll, togglePanel, writePanels } from "./panels";
+import Toolbar from "./Toolbar";
+import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Tool, rememberInGroup, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
+import { DRAWING, SHAPE_STYLE } from "./drawingDefaults";
+import { TEXT_FONT, withTextFont } from "./textFont";
+import { type Theme, currentTheme, onThemeChange } from "../theme/appearance";
+import EmptyCanvas from "./EmptyCanvas";
+import { fitTransform, nextZoom, stepZoom, zoomKey } from "./viewport";
+import ZoomControl from "./ZoomControl";
+import { failureToast } from "../toast/model";
+import Toasts from "../toast/Toasts";
+import { useToasts } from "../toast/useToasts";
 
 // Serialize the ScreenForge props with every object in canvas.json.
 FabricObject.customProperties = SF_PROPS;
@@ -53,6 +82,12 @@ const AUTOSAVE_DELAY_MS = 500;
 /** Longest side of the whole-canvas and frame renders sent to the agent. */
 const RENDER_MAX_SIDE = 2000;
 const CANVAS_RENDER_MARGIN = 40;
+/** Free area left by the floating toolbar (top), the zoom control (bottom) and the edges, for Fit all. */
+const FIT_INSETS = { top: 90, right: 50, bottom: 60, left: 50 };
+/** User exports render at 2x (sharp on Retina), down to this longest side. */
+const EXPORT_MAX_SIDE = 8000;
+/** How far a duplicate lands from its original, right and down. */
+const DUPLICATE_OFFSET = 20;
 
 function isNode(obj: SfObject): obj is FabricObject & SfProps {
   return typeof obj.sfId === "string";
@@ -65,7 +100,7 @@ function isShown(obj: FabricObject): boolean {
 
 /** Shapes a boolean operation can combine (not text, lines, images or frames). */
 function isBooleanShape(obj: FabricObject & SfProps): boolean {
-  return obj.sfKind === "vector_drawing" && !(obj instanceof IText) && !(obj instanceof Line);
+  return obj.sfKind === "vector_drawing" && !(obj instanceof IText) && !(obj instanceof Line) && !obj.sfShape;
 }
 
 const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
@@ -76,9 +111,18 @@ const BOOLEAN_OPS: { op: BooleanOp; label: string }[] = [
 ];
 
 /** PNG of a scene region, independent of the current pan and zoom. */
-function renderRegion(canvas: Canvas, box: Box): string {
+function renderRegion(
+  canvas: Canvas,
+  box: Box,
+  multiplier = renderScale(box, RENDER_MAX_SIDE),
+  filter?: (obj: object) => boolean,
+  // Content, not theme: the agent sees the same image in light and dark mode.
+  background: string = DRAWING.renderBackground,
+): string {
   const viewport = canvas.viewportTransform.slice() as TMat2D;
+  const shown = canvas.backgroundColor;
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+  canvas.backgroundColor = background;
   try {
     const png = canvas.toDataURL({
       format: "png",
@@ -86,12 +130,74 @@ function renderRegion(canvas: Canvas, box: Box): string {
       top: box.top,
       width: box.width,
       height: box.height,
-      multiplier: renderScale(box, RENDER_MAX_SIDE),
+      multiplier,
+      filter,
     });
     return dataUrlToBase64(png);
   } finally {
+    canvas.backgroundColor = shown;
     canvas.setViewportTransform(viewport);
   }
+}
+
+type CaptureNode = FabricImage & SfProps;
+
+function tracePolygon(ctx: CanvasRenderingContext2D, poly: Pt[]) {
+  ctx.beginPath();
+  poly.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+  ctx.closePath();
+}
+
+/** PNG of the pixels of `source` inside `poly` (image pixels), cropped to `box`. */
+function piecePng(source: CanvasImageSource, poly: Pt[], box: Box): string {
+  const el = document.createElement("canvas");
+  el.width = box.width;
+  el.height = box.height;
+  const ctx = el.getContext("2d")!;
+  ctx.translate(-box.left, -box.top);
+  tracePolygon(ctx, poly);
+  ctx.clip();
+  ctx.drawImage(source, 0, 0);
+  return el.toDataURL("image/png");
+}
+
+/** PNG of `source` with the pixels inside `poly` made transparent. */
+function holedPng(source: CanvasImageSource, width: number, height: number, poly: Pt[]): string {
+  const el = document.createElement("canvas");
+  el.width = width;
+  el.height = height;
+  const ctx = el.getContext("2d")!;
+  ctx.drawImage(source, 0, 0);
+  ctx.globalCompositeOperation = "destination-out";
+  tracePolygon(ctx, poly);
+  ctx.fill();
+  return el.toDataURL("image/png");
+}
+
+/** Scene center of an image-pixel box of `img`, which keeps the piece exactly where it was cut. */
+function pieceCenter(img: FabricImage, box: Box): Point {
+  const local = new Point(box.left + box.width / 2 - img.width / 2, box.top + box.height / 2 - img.height / 2);
+  return local.transform(img.calcTransformMatrix());
+}
+
+function exportScale(box: Box): number {
+  return 2 * renderScale(box, EXPORT_MAX_SIDE / 2);
+}
+
+/** PNG the Export button saves for `target`, or null when there is nothing to draw. */
+function renderExport(canvas: Canvas, target: ExportTarget, picked: (FabricObject & SfProps)[]): string | null {
+  if (target.scope === "node") {
+    const [obj] = picked;
+    // Captures keep their native resolution, like in the agent export.
+    const multiplier = obj.sfKind === "capture" ? 1 / (obj.scaleX || 1) : exportScale(obj.getBoundingRect());
+    return dataUrlToBase64(obj.toDataURL({ format: "png", multiplier }));
+  }
+  const boxes =
+    target.scope === "canvas"
+      ? canvas.getObjects().filter(isNode).filter(isShown).map((n) => n.getBoundingRect())
+      : picked.map((n) => n.getBoundingRect());
+  const box = unionBox(boxes, target.scope === "canvas" ? CANVAS_RENDER_MARGIN : 0);
+  return box && renderRegion(canvas, box, exportScale(box));
 }
 
 function layoutOf(nodes: (FabricObject & SfProps)[]) {
@@ -128,7 +234,7 @@ function exportNode(
 /** Style properties that apply to `obj`; undefined for captures (bitmaps). */
 function appliesOf(obj: FabricObject & SfProps): StyleApplies | undefined {
   if (obj.sfKind === "capture") return undefined;
-  const openPath = !!obj.sfAnchors && !obj.sfClosed;
+  const openPath = (!!obj.sfAnchors && !obj.sfClosed) || !!obj.sfShape;
   return { fill: !(obj instanceof Line) && !openPath, radius: obj instanceof Rect, text: obj instanceof IText };
 }
 
@@ -137,10 +243,23 @@ function styleOf(obj: FabricObject & SfProps) {
   return applies && readStyle(obj as unknown as StyledLike, applies);
 }
 
-function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
+function typeOf(obj: FabricObject & SfProps): string {
+  return typeLabel(layerIcon({ kind: obj.sfKind, type: obj.type, shape: obj.sfShape }));
+}
+
+/** What the inspector shows; `pin` and `childCount` come from the layers and the frame layout. */
+function toInspectorNode(obj: FabricObject & SfProps, pin: number | undefined, childCount: number): InspectorNode {
   return {
     id: obj.sfId,
     kind: obj.sfKind,
+    typeLabel: typeOf(obj),
+    pin,
+    ...(obj.sfKind === "capture" && {
+      size: { width: Math.round(obj.width), height: Math.round(obj.height) },
+      source: obj.sfSource,
+      capturedAt: obj.sfCapturedAt,
+    }),
+    ...(obj.sfKind === "frame" && { childCount }),
     name: obj.sfName,
     instructions: obj.sfInstructions,
     links: obj.sfLinks ?? [],
@@ -149,40 +268,92 @@ function toInspectorNode(obj: FabricObject & SfProps): InspectorNode {
   };
 }
 
+/** Selection box and handles in the theme's selection color (mockup: teal box, white square corners). */
+function styleSelection(canvas: Canvas, theme: Theme) {
+  const look = {
+    borderColor: theme.sel,
+    cornerColor: theme.panel,
+    cornerStrokeColor: theme.sel,
+    transparentCorners: false,
+    cornerSize: 8,
+    borderScaleFactor: 1.5,
+  };
+  Object.assign(FabricObject.ownDefaults, look);
+  canvas.getObjects().forEach((o) => o.set(look));
+  canvas.getActiveObject()?.set(look);
+  canvas.requestRenderAll();
+}
+
 /** Link arrows and frame names are display only: rebuilt from node props, never saved. */
-function drawOverlays(canvas: Canvas, previous: FabricObject[]): FabricObject[] {
+function drawOverlays(canvas: Canvas, previous: FabricObject[], theme: Theme): FabricObject[] {
   previous.forEach((a) => canvas.remove(a));
   const nodes = canvas.getObjects().filter(isNode).filter(isShown);
   const byId = new Map(nodes.map((n) => [n.sfId, n]));
+  const selected = new Set((canvas.getActiveObjects() as SfObject[]).filter(isNode).map((n) => n.sfId));
   const overlays: FabricObject[] = [];
   const display = { selectable: false, evented: false, excludeFromExport: true };
+  const add = (obj: FabricObject) => {
+    canvas.add(obj);
+    overlays.push(obj);
+  };
   for (const frame of nodes.filter((n) => n.sfKind === "frame")) {
     const bounds = frame.getBoundingRect();
-    const label = new FabricText(frame.sfName, {
-      ...display,
-      left: bounds.left,
-      top: bounds.top - 6,
-      originX: "left",
-      originY: "bottom",
-      fontSize: 14,
-      fontFamily: "system-ui, sans-serif",
-      fill: "#737373",
-    });
-    canvas.add(label);
-    overlays.push(label);
+    add(
+      new FabricText(frame.sfName, {
+        ...display,
+        left: bounds.left,
+        top: bounds.top - 6,
+        originX: "left",
+        originY: "bottom",
+        fontSize: 12,
+        fontWeight: 500,
+        fontFamily: TEXT_FONT,
+        fill: selected.has(frame.sfId) ? theme.sel : theme.tx2,
+      }),
+    );
   }
+  // Added last, so links stay above frames and the nodes they link.
   for (const source of nodes) {
     for (const link of source.sfLinks ?? []) {
       const target = byId.get(link.target_node);
       if (!target) continue;
-      const line = arrowBetween(source.getBoundingRect(), target.getBoundingRect());
-      if (!line) continue;
-      const [b1, b2] = arrowHead(line.from, line.to, 12);
-      const d = `M ${line.from.x} ${line.from.y} L ${line.to.x} ${line.to.y} M ${b1.x} ${b1.y} L ${line.to.x} ${line.to.y} L ${b2.x} ${b2.y}`;
-      // Added last, so arrows stay above frames and the nodes they link.
-      const arrow = new Path(d, { ...display, fill: "", stroke: "#64748b", strokeWidth: 2 });
-      canvas.add(arrow);
-      overlays.push(arrow);
+      const curve = linkCurve(source.getBoundingRect(), target.getBoundingRect());
+      if (!curve) continue;
+      const { from, c1, c2, to } = curve;
+      add(new Path(`M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`, { ...display, fill: "", stroke: theme.link, strokeWidth: 1.5 }));
+      const [b1, b2] = arrowHead(c2, to, 10);
+      add(new Polygon([b1, to, b2], { ...display, fill: theme.link, stroke: "" }));
+      if (link.trigger.trim()) {
+        // Mono chip with the trigger, at the middle of the curve.
+        const mid = bezierPoint(from, c1, c2, to, 0.5);
+        const text = new FabricText(link.trigger.trim(), {
+          ...display,
+          left: mid.x,
+          top: mid.y,
+          originX: "center",
+          originY: "center",
+          fontSize: 10,
+          fontFamily: "Geist Mono, ui-monospace, monospace",
+          fill: theme.tx2,
+        });
+        add(
+          new Rect({
+            ...display,
+            left: mid.x,
+            top: mid.y,
+            originX: "center",
+            originY: "center",
+            width: text.width + 12,
+            height: text.height + 4,
+            rx: 5,
+            ry: 5,
+            fill: theme.panel,
+            stroke: theme.line2,
+            strokeWidth: 1,
+          }),
+        );
+        add(text);
+      }
     }
   }
   canvas.requestRenderAll();
@@ -201,18 +372,8 @@ function tagAsNode(canvas: Canvas, obj: FabricObject, kind: NodeKind, name?: str
   Object.assign(obj, props);
 }
 
-const TOOLBAR: { id: Tool; label: string; key: string; hint: string }[] = [
-  { id: "select", label: "Select", key: "V", hint: "Select and move" },
-  { id: "frame", label: "Frame", key: "F", hint: "A named screen: everything placed inside it belongs to it" },
-  { id: "rect", label: "Rectangle", key: "R", hint: "Drag to draw; Shift for a square" },
-  { id: "ellipse", label: "Ellipse", key: "O", hint: "Drag to draw; Shift for a circle" },
-  { id: "line", label: "Line", key: "L", hint: "Drag to draw; Shift snaps to 45°" },
-  { id: "polygon", label: "Polygon", key: "no key", hint: "Drag to draw" },
-  { id: "pen", label: "Pen", key: "P", hint: "Click for corners, drag for curves; click the first point to close, Enter to finish; double-click a path to edit it" },
-  { id: "text", label: "Text", key: "T", hint: "Click to type" },
-];
 
-const WIREFRAME = { fill: "#e5e7eb", stroke: "#6b7280", strokeWidth: 1, strokeUniform: true };
+
 const TOP_LEFT = { originX: "left", originY: "top" } as const;
 /** Size of a shape placed with a click instead of a drag. */
 const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
@@ -220,6 +381,8 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
   rect: { width: 160, height: 100 },
   ellipse: { width: 120, height: 120 },
   line: { width: 160, height: 0 },
+  arrow: { width: 160, height: 0 },
+  cross: { width: 40, height: 40 },
   polygon: { width: 120, height: 120 },
   pen: { width: 0, height: 0 },
   text: { width: 0, height: 0 },
@@ -228,30 +391,60 @@ const DEFAULT_SIZE: Record<DrawingTool, { width: number; height: number }> = {
 /** The shape a drag from `start` to `end` draws with `tool` (text is placed on click). */
 type ShapeTool = Exclude<DrawingTool, "text" | "pen">;
 
-const PEN_STROKE = { fill: "", stroke: "#111827", strokeWidth: 2, strokeUniform: true };
+const PEN_STROKE = { fill: "", stroke: DRAWING.pen, strokeWidth: 2, strokeUniform: true };
+const ROUND_ENDS = { strokeLineJoin: "round", strokeLineCap: "round" } as const;
+
+/** An arrow node's path; its head is sized from the stroke width. */
+function arrowFrom(start: Pt, end: Pt, style: { fill: string; stroke: string; strokeWidth: number; strokeUniform: boolean; opacity?: number }): Path {
+  const path = new Path(arrowPath(start, end, arrowHeadSize(style.strokeWidth)), { ...style, ...ROUND_ENDS });
+  return Object.assign(path, { sfShape: "arrow" as const });
+}
+
+/**
+ * The same arrow redrawn in scene coordinates, so its head follows a new stroke
+ * width. Like a path edit, this resets its scale and rotation.
+ */
+function redrawArrow(canvas: Canvas, old: Path & SfProps): Path & SfProps {
+  const matrix = old.calcTransformMatrix();
+  const toScene = (cmd: (string | number)[]) =>
+    new Point((cmd[1] as number) - old.pathOffset.x, (cmd[2] as number) - old.pathOffset.y).transform(matrix);
+  const [start, end] = [toScene(old.path[0]), toScene(old.path[1])];
+  const next = arrowFrom(start, end, {
+    fill: "",
+    stroke: old.stroke as string,
+    strokeWidth: old.strokeWidth,
+    strokeUniform: true,
+    opacity: old.opacity,
+  }) as Path & SfProps;
+  for (const key of SF_PROPS) (next as unknown as Record<string, unknown>)[key] = old[key];
+  canvas.insertAt(canvas.getObjects().indexOf(old), next);
+  canvas.remove(old);
+  return next;
+}
 const DISPLAY_ONLY = { selectable: false, evented: false, excludeFromExport: true };
 
 /** A pen path through `anchors`; a closed one gets the wireframe fill. */
 function pathFrom(anchors: Anchor[], closed: boolean): Path {
-  const path = new Path(toSvgPath(anchors, closed), closed ? { ...WIREFRAME } : { ...PEN_STROKE });
+  const path = new Path(toSvgPath(anchors, closed), closed ? { ...SHAPE_STYLE } : { ...PEN_STROKE });
   Object.assign(path, { sfAnchors: anchors, sfClosed: closed });
   return path;
 }
 
 /** Points and handle lines shown while drawing or editing a path. */
 function anchorMarkers(anchors: Anchor[], zoom: number, withHandles: boolean): FabricObject[] {
+  const { sel, panel } = currentTheme();
   const size = 8 / zoom;
   const markers: FabricObject[] = [];
   for (const a of anchors) {
     if (withHandles) {
       for (const h of [a.in, a.out]) {
         if (!h) continue;
-        markers.push(new Line([a.x, a.y, h.x, h.y], { ...DISPLAY_ONLY, stroke: "#3B82F6", strokeWidth: 1 / zoom }));
-        markers.push(new Circle({ ...DISPLAY_ONLY, left: h.x, top: h.y, radius: size / 2, fill: "#3B82F6" }));
+        markers.push(new Line([a.x, a.y, h.x, h.y], { ...DISPLAY_ONLY, stroke: sel, strokeWidth: 1 / zoom }));
+        markers.push(new Circle({ ...DISPLAY_ONLY, left: h.x, top: h.y, radius: size / 2, fill: sel }));
       }
     }
     markers.push(
-      new Rect({ ...DISPLAY_ONLY, left: a.x, top: a.y, width: size, height: size, fill: "#ffffff", stroke: "#3B82F6", strokeWidth: 1 / zoom }),
+      new Rect({ ...DISPLAY_ONLY, left: a.x, top: a.y, width: size, height: size, fill: panel, stroke: sel, strokeWidth: 1 / zoom }),
     );
   }
   return markers;
@@ -260,36 +453,122 @@ function anchorMarkers(anchors: Anchor[], zoom: number, withHandles: boolean): F
 function shapeFor(tool: ShapeTool, start: Point, end: Point, shift: boolean): FabricObject {
   if (tool === "line") {
     const to = snapLine(start, end, shift);
-    return new Line([start.x, start.y, to.x, to.y], { stroke: "#374151", strokeWidth: 2, strokeUniform: true });
+    return new Line([start.x, start.y, to.x, to.y], { stroke: DRAWING.line, strokeWidth: 2, strokeUniform: true });
+  }
+  if (tool === "arrow") {
+    return arrowFrom(start, snapLine(start, end, shift), PEN_STROKE);
   }
   const box = dragBox(start, end, shift);
   const at = { ...TOP_LEFT, left: box.left, top: box.top };
   switch (tool) {
     case "frame":
-      return new Rect({ ...at, width: box.width, height: box.height, fill: "#ffffff", stroke: "#d4d4d4", strokeWidth: 1 });
+      return new Rect({ ...at, width: box.width, height: box.height, fill: DRAWING.frameFill, stroke: DRAWING.frameStroke, strokeWidth: 1 });
     case "rect":
-      return new Rect({ ...WIREFRAME, ...at, width: box.width, height: box.height });
+      return new Rect({ ...SHAPE_STYLE, ...at, width: box.width, height: box.height });
     case "ellipse":
-      return new Ellipse({ ...WIREFRAME, ...at, rx: box.width / 2, ry: box.height / 2 });
+      return new Ellipse({ ...SHAPE_STYLE, ...at, rx: box.width / 2, ry: box.height / 2 });
     case "polygon":
-      return new Polygon(polygonPoints(3, box), { ...WIREFRAME });
+      return new Polygon(polygonPoints(3, box), { ...SHAPE_STYLE });
+    case "cross":
+      return Object.assign(new Path(crossPath(box), { ...PEN_STROKE, stroke: DRAWING.cross, strokeLineCap: "round" }), { sfShape: "cross" });
   }
 }
 
-export default function CanvasView({ root }: { root: string }) {
+/** What the app shell drives on the canvas (the Export button lives in the title bar). */
+export interface CanvasControls {
+  exportPng: (settings: ExportSettings) => Promise<void>;
+}
+
+interface CanvasViewProps {
+  root: string;
+  /** Called once the saved canvas has been loaded, or has failed to (the failure is shown as a toast). */
+  onLoaded?: () => void;
+  /** Called after every successful save. */
+  onSaved?: (at: Date) => void;
+  /** Label of the Export action for the current selection. */
+  onExportLabel?: (label: string) => void;
+  controls?: { current: CanvasControls | null };
+}
+
+export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, controls }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
-  const [status, setStatus] = useState("");
+  // push and dismiss keep their identity, so the canvas effect can hold on to push.
+  const { toasts, push, dismiss } = useToasts();
+  // The empty-canvas message only shows once the saved canvas has loaded.
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "failed">("loading");
   const [selected, setSelected] = useState<InspectorNode | null>(null);
-  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
+  const [others, setOthers] = useState<{ id: string; name: string; type: string }[]>([]);
   // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
-  const addImageRef = useRef<(dataUrl: string, name?: string) => Promise<void>>(async () => {});
+  const addImageRef = useRef<(dataUrl: string, name?: string, source?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
+  const [cutMode, setCutMode] = useState<CutMode>("lasso");
+  // Layers dock from 1200 px and float over the canvas below (mockup 1d).
+  const [layout, setLayout] = useState(() => layersLayout(window.innerWidth));
+  const [layersOpen, setLayersOpen] = useState(false);
+  // Side panels the user folded away; remembered between sessions.
+  const [panels, setPanels] = useState<PanelsState>(() => readPanels(browserStorage()));
+  useEffect(() => {
+    writePanels(browserStorage(), panels);
+  }, [panels]);
+  const showLayers = layout === "docked" ? !panels.layers : layersOpen;
+  const hideLayers = () => (layout === "floating" ? setLayersOpen(false) : setPanels((p) => togglePanel(p, "layers")));
+  const showLayersAgain = () => (layout === "floating" ? setLayersOpen(true) : setPanels((p) => togglePanel(p, "layers")));
+  // Shift+Cmd+H folds or brings back both panels, judging by what is on screen: a closed
+  // floating panel, or an inspector with nothing selected, counts as folded.
+  function togglePanels() {
+    const next = toggleAll({ layers: !showLayers, inspector: !(selected && !panels.inspector) });
+    setPanels(next);
+    if (layout === "floating") setLayersOpen(!next.layers);
+  }
+  const togglePanelsRef = useRef(togglePanels);
+  togglePanelsRef.current = togglePanels;
+  useEffect(() => {
+    const onResize = () => setLayout(layersLayout(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  // Which shape and line tool the grouped toolbar buttons show.
+  const [choice, setChoice] = useState<GroupChoice>({ shape: "rect", line: "line" });
+  useEffect(() => setChoice((c) => rememberInGroup(c, tool)), [tool]);
+  const cutModeRef = useRef<CutMode>("lasso");
+  cutModeRef.current = cutMode;
   const [layers, setLayers] = useState<LayerRow[]>([]);
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [zoom, setZoom] = useState(1);
+  const zoomOpsRef = useRef<{ step: (direction: "in" | "out") => void; fit: () => void } | null>(null);
+  const [selectionUi, setSelectionUi] = useState<ReturnType<typeof selectionOverlay> | null>(null);
   const [booleanCount, setBooleanCount] = useState(0);
+  const projectName = root.split("/").filter(Boolean).pop() ?? "canvas";
+  const [exportTo, setExportTo] = useState<ExportTarget>(() => exportTarget([], projectName));
+  const exportRef = useRef<(settings: ExportSettings) => Promise<void>>(async () => {});
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
+  useEffect(() => {
+    onExportLabel?.(exportTo.label);
+  }, [exportTo.label, onExportLabel]);
+  useEffect(() => {
+    if (!controls) return;
+    controls.current = {
+      exportPng: (settings) => exportRef.current(settings).catch((error) => push(failureToast("Export failed", error))),
+    };
+    return () => {
+      controls.current = null;
+    };
+  }, [controls]);
+  const menuOpsRef = useRef<{
+    open: (e: MouseEvent) => { targets: MenuTargets; hasClipboard: boolean };
+    run: (action: MenuAction) => void;
+  } | null>(null);
+  const [menu, setMenu] = useState<{ targets: MenuTargets; hasClipboard: boolean }>({
+    targets: { count: 0, allLocked: false, grouped: false },
+    hasClipboard: false,
+  });
   const layerOpsRef = useRef<{
     select: (id: string) => void;
     rename: (id: string, name: string) => void;
@@ -301,20 +580,27 @@ export default function CanvasView({ root }: { root: string }) {
   } | null>(null);
   const toolRef = useRef<Tool>("select");
   toolRef.current = tool;
-  const [picker, setPicker] = useState<{ windows: WindowInfo[]; permissionMissing: boolean } | null>(
-    null,
-  );
+  const [picker, setPicker] = useState<PickerState | null>(null);
+  // Identifies the latest open of the picker: a listing that finishes after a cancel is dropped.
+  const pickerTicket = useRef(0);
 
   useEffect(() => {
     const container = containerRef.current!;
     const canvas = new Canvas(canvasElRef.current!, {
       width: container.clientWidth,
       height: container.clientHeight,
-      backgroundColor: "#f5f5f5",
+      // Transparent: the canvas color and dot grid are the container's background.
+      backgroundColor: "",
       preserveObjectStacking: true,
+      // Let right-clicks reach the context menu (Fabric swallows them by default).
+      stopContextMenu: false,
     });
     fabricRef.current = canvas;
+    styleSelection(canvas, currentTheme());
     let loading = true;
+    // Set on cleanup: in development React mounts the canvas twice, and the first,
+    // already destroyed canvas fails to load. That failure is not the user's.
+    let disposed = false;
 
     const autosave = createAutosave(
       async () => {
@@ -328,10 +614,10 @@ export default function CanvasView({ root }: { root: string }) {
         );
         const canvasPng = extent && renderRegion(canvas, extent);
         await saveCanvas(root, JSON.stringify(canvas.toObject()), canvasPng, exports);
-        setStatus(`Saved ${new Date().toLocaleTimeString()}`);
+        onSavedRef.current?.(new Date());
       },
       AUTOSAVE_DELAY_MS,
-      (error) => setStatus(`Save failed: ${String(error)}`),
+      (error) => push(failureToast("Save failed", error)),
     );
     // Undo history: a snapshot of the canvas after each change, grouped over
     // 300 ms so that a whole drag is one step.
@@ -348,25 +634,91 @@ export default function CanvasView({ root }: { root: string }) {
 
     let overlays: FabricObject[] = [];
     const redrawArrows = () => {
-      overlays = drawOverlays(canvas, overlays);
+      overlays = drawOverlays(canvas, overlays, currentTheme());
     };
+    const unlistenTheme = onThemeChange((theme) => {
+      styleSelection(canvas, theme);
+      redrawArrows();
+    });
     // Arrow objects come and go on every redraw: only node changes trigger a save.
+    // Layer rows, top to bottom: the pins are numbered in this order.
+    let layerItems: LayerRow["item"][] = [];
+    let lastSummary = -1;
     const refreshLayers = () => {
       const nodes = canvas.getObjects().filter(isNode);
       const parents = layoutOf(nodes);
-      setLayers(
-        layerRows(
+      const rows = layerRows(
+        withGroupRows(
           nodes.map((n) => ({
             id: n.sfId,
             name: n.sfName,
             kind: n.sfKind,
             parent: parents[n.sfId],
+            group: n.sfGroup,
+            icon: layerIcon({ kind: n.sfKind, type: n.type, shape: n.sfShape }),
+            instructed: hasInstructions(n.sfInstructions),
             hidden: !isShown(n),
             locked: !!n.sfLocked,
           })),
         ),
       );
+      layerItems = rows.map((r) => r.item);
+      setLayers(rows);
+      // The edge pill shows how many elements the agent has instructions for.
+      const instructed = rows.filter((r) => r.item.instructed).length;
+      if (instructed !== lastSummary) {
+        lastSummary = instructed;
+        sendCanvasSummary(instructed).catch(() => {});
+      }
     };
+    // Instruction pins follow every render (pan, zoom, moves); React only
+    // re-renders when a pin actually changed.
+    let pinsKey = "";
+    let selectionKey = "";
+    let lastZoom = canvas.getZoom();
+    canvas.on("after:render", () => {
+      if (canvas.getZoom() !== lastZoom) {
+        lastZoom = canvas.getZoom();
+        setZoom(lastZoom);
+      }
+      const grid = gridBackground(canvas.viewportTransform);
+      container.style.backgroundSize = `${grid.size}px ${grid.size}px`;
+      container.style.backgroundPosition = `${grid.x}px ${grid.y}px`;
+      const active = canvas.getActiveObject();
+      let ui: ReturnType<typeof selectionOverlay> | null = null;
+      if (active && !(active instanceof IText && active.isEditing)) {
+        const b = active.getBoundingRect();
+        const tl = new Point(b.left, b.top).transform(canvas.viewportTransform);
+        const br = new Point(b.left + b.width, b.top + b.height).transform(canvas.viewportTransform);
+        ui = selectionOverlay(
+          { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y },
+          { width: active.getScaledWidth(), height: active.getScaledHeight() },
+        );
+      }
+      const uiKey = JSON.stringify(ui);
+      if (uiKey !== selectionKey) {
+        selectionKey = uiKey;
+        setSelectionUi(ui);
+      }
+      const numbers = pinNumbers(layerItems);
+      const vpt = canvas.viewportTransform;
+      const next = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n) => numbers.has(n.sfId))
+        .map((n) => {
+          const b = n.getBoundingRect();
+          const tl = new Point(b.left, b.top).transform(vpt);
+          const br = new Point(b.left + b.width, b.top + b.height).transform(vpt);
+          const place = pinPlacement({ left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y });
+          return { id: n.sfId, n: numbers.get(n.sfId)!, name: n.sfName, text: n.sfInstructions.trim(), ...place };
+        })
+        .sort((a, b) => a.n - b.n);
+      const key = JSON.stringify(next);
+      if (key === pinsKey) return;
+      pinsKey = key;
+      setPins(next);
+    });
     const onChange = ({ target }: { target: SfObject }) => {
       if (loading || restoring || !isNode(target)) return;
       redrawArrows();
@@ -376,6 +728,14 @@ export default function CanvasView({ root }: { root: string }) {
     canvas.on("object:added", onChange);
     canvas.on("object:modified", onChange);
     canvas.on("object:removed", onChange);
+    // Shift while dragging keeps the move horizontal or vertical. Registered
+    // before the other move handlers so frame content and arrows follow it.
+    canvas.on("object:moving", ({ e, target, transform }) => {
+      if (!e.shiftKey) return;
+      const { left, top } = transform.original;
+      const p = lockToAxis({ x: left, y: top }, { x: target.left, y: target.top });
+      target.set({ left: p.x, top: p.y });
+    });
     canvas.on("object:moving", redrawArrows);
 
     // Dragging a frame drags everything placed on it, like a screen in Figma.
@@ -407,22 +767,25 @@ export default function CanvasView({ root }: { root: string }) {
       const active = canvas.getActiveObjects() as SfObject[];
       const node = active.length === 1 && isNode(active[0]) ? active[0] : null;
       setBooleanCount(active.filter(isNode).filter(isBooleanShape).length);
-      setSelected(node ? toInspectorNode(node) : null);
-      setOthers(
-        canvas
-          .getObjects()
-          .filter(isNode)
-          .filter((n) => n !== node)
-          .map((n) => ({ id: n.sfId, name: n.sfName })),
+      // Frame names turn teal when their frame is selected.
+      redrawArrows();
+      setExportTo(exportTarget(active.filter(isNode).map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName));
+      const nodes = canvas.getObjects().filter(isNode);
+      setSelected(
+        node
+          ? toInspectorNode(node, pinNumbers(layerItems).get(node.sfId), node.sfKind === "frame" ? descendants(layoutOf(nodes), node.sfId).length : 0)
+          : null,
       );
+      setOthers(nodes.filter((n) => n !== node).map((n) => ({ id: n.sfId, name: n.sfName, type: typeOf(n) })));
     };
     canvas.on("selection:created", syncSelection);
     canvas.on("selection:updated", syncSelection);
     canvas.on("selection:cleared", syncSelection);
     afterEditRef.current = () => {
+      // Layers first: the inspector reads the pin number from them.
+      refreshLayers();
       syncSelection();
       redrawArrows();
-      refreshLayers();
       commit();
     };
 
@@ -447,8 +810,8 @@ export default function CanvasView({ root }: { root: string }) {
     // Layers panel actions. Reordering moves past the other nodes only: arrows
     // and frame labels are objects of the stack too.
     const nodeById = (id: string) => canvas.getObjects().filter(isNode).find((n) => n.sfId === id);
-    const restack = (direction: 1 | -1) => {
-      const obj = canvas.getActiveObject() as SfObject | undefined;
+    const restack = (direction: 1 | -1, target?: SfObject) => {
+      const obj = target ?? (canvas.getActiveObject() as SfObject | undefined);
       if (!obj || !isNode(obj)) return;
       const nodes = canvas.getObjects().filter(isNode);
       const neighbour = nodes[nodes.indexOf(obj) + direction];
@@ -456,34 +819,263 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.moveObjectTo(obj, canvas.getObjects().indexOf(neighbour));
       afterEditRef.current();
     };
+    exportRef.current = async (settings) => {
+      const picked = (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+      const target = exportTarget(picked.map((n) => ({ kind: n.sfKind, name: n.sfName })), projectName);
+      const png = renderExport(canvas, target, picked);
+      if (!png) {
+        push({ kind: "warn", title: "Nothing to export", message: "There is no visible element on the canvas yet." });
+        return;
+      }
+      const path = await pickImagePath(withExtension(target.fileName, settings.format), settings.format);
+      if (!path) return;
+      await exportImage(path, png, settings);
+      push({ kind: "ok", title: "Exported", message: path.split("/").pop() });
+    };
+
+    // Copies go right above their originals and become the selection.
+    type NodeObject = FabricObject & SfProps;
+    const selectedNodes = () => (canvas.getActiveObjects() as SfObject[]).filter(isNode);
+    const selectNodes = (nodes: FabricObject[]) => {
+      if (nodes.length === 0) return;
+      canvas.setActiveObject(nodes.length === 1 ? nodes[0] : new ActiveSelection(nodes, { canvas }));
+    };
+    /** Copies and pasted nodes start unlocked, with fresh ids. */
+    const addAsCopies = (sources: NodeObject[], copies: FabricObject[]) => {
+      const props = duplicateProps(sources, newNodeId);
+      copies.forEach((copy, i) => {
+        Object.assign(copy, props[i], { sfLocked: false });
+        copy.set(lockProps(false));
+      });
+    };
+    const duplicate = async (targets?: NodeObject[]) => {
+      const picked = targets ?? selectedNodes();
+      if (picked.length === 0) return;
+      // Out of the selection group, objects carry their absolute placement.
+      canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => picked.includes(o as FabricObject & SfProps)) as (FabricObject & SfProps)[];
+      const copies = await Promise.all(ordered.map((o) => o.clone()));
+      addAsCopies(ordered, copies);
+      copies.forEach((copy, i) => {
+        copy.set({ left: copy.left + DUPLICATE_OFFSET, top: copy.top + DUPLICATE_OFFSET });
+        copy.setCoords();
+        canvas.insertAt(canvas.getObjects().indexOf(ordered[i]) + 1, copy);
+      });
+      selectNodes(copies);
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+
+    // Copy and paste stay inside ScreenForge: a copy is a snapshot of the nodes,
+    // pasted with fresh ids. An image on the system clipboard still pastes as a capture.
+    let clipboard: { objects: Record<string, unknown>[]; bounds: Box } | null = null;
+    let pasteCount = 0;
+    const copy = (targets: NodeObject[]) => {
+      if (targets.length === 0) return;
+      const selected = selectedNodes();
+      const grouped = targets.some((t) => selected.includes(t));
+      // Out of the selection group, objects carry their absolute placement.
+      if (grouped) canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => targets.includes(o as NodeObject)) as NodeObject[];
+      clipboard = { objects: ordered.map((o) => o.toObject()), bounds: unionBox(ordered.map((o) => o.getBoundingRect()), 0)! };
+      pasteCount = 0;
+      if (grouped) selectNodes(selected);
+      canvas.requestRenderAll();
+    };
+    const paste = async (at?: Pt) => {
+      if (!clipboard) return;
+      pasteCount += 1;
+      const d = pasteDelta(clipboard.bounds, pasteCount, at);
+      const pasted = (await util.enlivenObjects(clipboard.objects)) as FabricObject[];
+      addAsCopies(clipboard.objects as unknown as NodeObject[], pasted);
+      canvas.discardActiveObject();
+      for (const obj of pasted) {
+        obj.set({ left: obj.left + d.x, top: obj.top + d.y });
+        obj.setCoords();
+        canvas.add(obj);
+        // Frames sit behind the elements placed on them.
+        if ((obj as NodeObject).sfKind === "frame") canvas.sendObjectToBack(obj);
+      }
+      selectNodes(pasted);
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+    const setLocked = (targets: NodeObject[], locked: boolean) => {
+      for (const obj of targets) {
+        obj.sfLocked = locked;
+        obj.set(lockProps(locked));
+      }
+      if (locked) canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+
+    // Groups are light: members stay nodes of their own, share sfGroup, and are
+    // selected and moved together from the canvas. The layers panel can still
+    // select one member alone.
+    const group = (targets: NodeObject[]) => {
+      if (targets.length < 2) return;
+      const names = [...new Set(canvas.getObjects().filter(isNode).map((n) => n.sfGroup?.name).filter((n): n is string => !!n))];
+      const ref = { id: newGroupId(), name: nextNodeName("vector_drawing", names, "Group") };
+      targets.forEach((t) => (t.sfGroup = ref));
+      afterEditRef.current();
+    };
+    const ungroup = (targets: NodeObject[]) => {
+      const ids = new Set(targets.map((t) => t.sfGroup?.id).filter(Boolean));
+      canvas.getObjects().filter(isNode).forEach((n) => {
+        if (n.sfGroup && ids.has(n.sfGroup.id)) delete n.sfGroup;
+      });
+      afterEditRef.current();
+    };
+    /** The selection grown to whole groups; only unlocked, shown nodes can join it. */
+    const grownSelection = (selected: NodeObject[]) => {
+      const pickable = canvas.getObjects().filter(isNode).filter((n) => isShown(n) && !n.sfLocked);
+      const ids = expandToGroups(
+        selected.map((n) => n.sfId),
+        pickable.map((n) => ({ id: n.sfId, group: n.sfGroup?.id })),
+      );
+      return pickable.filter((n) => ids.includes(n.sfId));
+    };
+    // A click on a member selects its group before Fabric starts the drag, so
+    // the whole group moves.
+    canvas.on("mouse:down:before", ({ e }) => {
+      if (toolRef.current !== "select" || spaceDown || e.shiftKey || e.metaKey || ("button" in e && e.button !== 0)) return;
+      const p = canvas.getScenePoint(e);
+      const hit = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n) => isShown(n) && !n.sfLocked)
+        .reverse()
+        .find((n) => n.containsPoint(p));
+      if (!hit?.sfGroup || selectedNodes().includes(hit)) return;
+      selectNodes(grownSelection([hit]));
+      // Fabric found (and cached) the clicked member before this handler ran;
+      // drop that private cache so the drag targets the new group selection.
+      (canvas as unknown as { _targetInfo?: unknown })._targetInfo = undefined;
+    });
+    // Box selection and Shift+click also take whole groups (nothing is moving then).
+    const growUserSelection = ({ e }: { e?: Event }) => {
+      if (!e) return;
+      const selected = selectedNodes();
+      const grown = grownSelection(selected);
+      if (grown.length === selected.length) return;
+      selectNodes(grown);
+      canvas.requestRenderAll();
+    };
+    canvas.on("selection:created", growUserSelection);
+    canvas.on("selection:updated", growUserSelection);
+
+    // Merge flattens nodes into one capture, like merging layers in an image
+    // editor. Links to the sources now point at the merged capture.
+    const flatten = async (targets: NodeObject[]) => {
+      if (targets.length < 2) return;
+      canvas.discardActiveObject();
+      const ordered = canvas.getObjects().filter((o) => targets.includes(o as NodeObject)) as NodeObject[];
+      const box = unionBox(ordered.map((o) => o.getBoundingRect()), 0)!;
+      const scale = flattenScale(box, ordered.filter((o) => o.sfKind === "capture").map((o) => o.scaleX || 1));
+      // Only the merged nodes, on a transparent background.
+      const png = renderRegion(canvas, box, scale, (o) => ordered.includes(o as NodeObject), "");
+      const image = await FabricImage.fromURL(`data:image/png;base64,${png}`);
+      const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+      tagAsNode(canvas, image, "capture", nextNodeName("capture", names, "Merged"));
+      Object.assign(image, mergedNodeProps(ordered));
+      // Fabric 7 images are positioned by their center.
+      image.set({ left: box.left + box.width / 2, top: box.top + box.height / 2, scaleX: 1 / scale, scaleY: 1 / scale });
+      image.setCoords();
+      canvas.insertAt(canvas.getObjects().indexOf(ordered[ordered.length - 1]) + 1, image);
+      ordered.forEach((o) => canvas.remove(o));
+      const merged = new Set(ordered.map((o) => o.sfId));
+      const mergedId = (image as unknown as NodeObject).sfId;
+      for (const n of canvas.getObjects().filter(isNode)) {
+        if (n === (image as unknown as NodeObject) || !n.sfLinks?.some((l) => merged.has(l.target_node))) continue;
+        const seen = new Set<string>();
+        n.sfLinks = n.sfLinks
+          .map((l) => (merged.has(l.target_node) ? { ...l, target_node: mergedId } : l))
+          .filter((l) => !seen.has(l.target_node) && seen.add(l.target_node));
+      }
+      canvas.setActiveObject(image);
+      canvas.requestRenderAll();
+      afterEditRef.current();
+    };
+
+    // Right-click acts on the selection when it is clicked, else on the node
+    // under the pointer (locked ones included, so they can be unlocked).
+    let menuTargets: NodeObject[] = [];
+    let menuPoint: Point | null = null;
+    const nodeAt = (p: Point) =>
+      canvas.getObjects().filter(isNode).filter(isShown).reverse().find((o) => o.containsPoint(p));
+    menuOpsRef.current = {
+      open: (e) => {
+        menuPoint = canvas.getScenePoint(e);
+        const hit = nodeAt(menuPoint);
+        const selected = selectedNodes();
+        if (hit && selected.includes(hit)) {
+          menuTargets = selected;
+        } else {
+          menuTargets = hit ? [hit] : [];
+          canvas.discardActiveObject();
+          if (hit && !hit.sfLocked) canvas.setActiveObject(hit);
+          canvas.requestRenderAll();
+          syncSelection();
+        }
+        return {
+          targets: {
+            count: menuTargets.length,
+            allLocked: menuTargets.length > 0 && menuTargets.every((t) => t.sfLocked),
+            grouped: menuTargets.some((t) => t.sfGroup),
+          },
+          hasClipboard: clipboard !== null,
+        };
+      },
+      run: (action) => {
+        const targets = menuTargets;
+        const fail = (error: unknown) => push(failureToast(`Could not ${action}`, error));
+        if (action === "copy") copy(targets);
+        if (action === "paste") paste(menuPoint ?? undefined).catch(fail);
+        if (action === "duplicate") duplicate(targets).catch(fail);
+        if (action === "group") group(targets);
+        if (action === "ungroup") ungroup(targets);
+        if (action === "merge") flatten(targets).catch(fail);
+        if (action === "lock") setLocked(targets, !targets.every((t) => t.sfLocked));
+        if (action === "forward" || action === "backward") restack(action === "forward" ? 1 : -1, targets[0]);
+      },
+    };
+    // A row is a node or a group; a group row acts on all its members.
+    const rowNodes = (id: string) => {
+      const obj = nodeById(id);
+      return obj ? [obj] : canvas.getObjects().filter(isNode).filter((n) => n.sfGroup?.id === id);
+    };
     layerOpsRef.current = {
       select: (id) => {
-        const obj = nodeById(id);
-        if (!obj || !isShown(obj)) return;
-        canvas.setActiveObject(obj);
+        const picked = rowNodes(id).filter((n) => isShown(n) && !n.sfLocked);
+        if (picked.length === 0) return;
+        canvas.discardActiveObject();
+        canvas.setActiveObject(picked.length === 1 ? picked[0] : new ActiveSelection(picked, { canvas }));
         canvas.requestRenderAll();
         syncSelection();
       },
       rename: (id, name) => {
         const obj = nodeById(id);
-        if (!obj) return;
-        obj.sfName = name;
+        if (obj) obj.sfName = name;
+        else rowNodes(id).forEach((n) => (n.sfGroup = { id, name }));
         afterEditRef.current();
       },
       toggleHidden: (id) => {
-        const obj = nodeById(id);
-        if (!obj) return;
-        obj.visible = !isShown(obj);
-        if (!obj.visible && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        const nodes = rowNodes(id);
+        const visible = nodes.every((n) => !isShown(n));
+        nodes.forEach((n) => (n.visible = visible));
+        if (!visible) canvas.discardActiveObject();
         canvas.requestRenderAll();
         afterEditRef.current();
       },
       toggleLocked: (id) => {
-        const obj = nodeById(id);
-        if (!obj) return;
-        obj.sfLocked = !obj.sfLocked;
-        obj.set(lockProps(obj.sfLocked));
-        if (obj.sfLocked && canvas.getActiveObjects().includes(obj)) canvas.discardActiveObject();
+        const nodes = rowNodes(id);
+        const locked = !nodes.every((n) => n.sfLocked);
+        nodes.forEach((n) => {
+          n.sfLocked = locked;
+          n.set(lockProps(locked));
+        });
+        if (locked) canvas.discardActiveObject();
         canvas.requestRenderAll();
         afterEditRef.current();
       },
@@ -500,7 +1092,7 @@ export default function CanvasView({ root }: { root: string }) {
           ordered.map((o) => `<svg xmlns="http://www.w3.org/2000/svg">${o.toSVG()}</svg>`),
         );
         if (!result) {
-          setStatus(`${op}: nothing is left`);
+          push({ kind: "warn", title: "Nothing left", message: `${BOOLEAN_OPS.find((b) => b.op === op)!.label} of these shapes is empty.` });
           return;
         }
         const bottom = ordered[0];
@@ -521,7 +1113,7 @@ export default function CanvasView({ root }: { root: string }) {
 
     loadCanvas(root)
       .then(async (json) => {
-        if (json) await canvas.loadFromJSON(json);
+        if (json) await canvas.loadFromJSON(withTextFont(json));
         canvas
           .getObjects()
           .filter(isNode)
@@ -529,14 +1121,19 @@ export default function CanvasView({ root }: { root: string }) {
         redrawArrows();
         refreshLayers();
         history.record(snapshot());
+        if (!disposed) setLoadState("ready");
       })
       .catch((error) => {
+        if (disposed) return;
         // Saving now would mirror an empty canvas and delete every node on disk.
         autosave.block();
-        setStatus(`Load failed, saving is disabled to protect your files: ${String(error)}`);
+        setLoadState("failed");
+        push(failureToast("Load failed, saving is off", error, true));
       })
       .finally(() => {
         loading = false;
+        // A canvas disposed before its load ended (development double mount) says nothing.
+        if (!disposed) onLoadedRef.current?.();
       });
 
     // Trackpad: two-finger scroll pans, pinch (ctrlKey) or Cmd+wheel zooms.
@@ -549,6 +1146,19 @@ export default function CanvasView({ root }: { root: string }) {
       }
     });
 
+    // Zoom buttons and shortcuts act around the center of the view; Fit all shows
+    // every visible node in the space left by the floating controls.
+    zoomOpsRef.current = {
+      step: (direction) => canvas.zoomToPoint(new Point(canvas.width / 2, canvas.height / 2), stepZoom(canvas.getZoom(), direction)),
+      fit: () => {
+        const box = unionBox(canvas.getObjects().filter(isNode).filter(isShown).map((n) => n.getBoundingRect()), 0);
+        canvas.setViewportTransform(
+          box ? fitTransform(box, { width: canvas.width, height: canvas.height }, FIT_INSETS) : [1, 0, 0, 1, 0, 0],
+        );
+        canvas.requestRenderAll();
+      },
+    };
+
     // Space + drag pans.
     let spaceDown = false;
     let lastPan: Point | null = null;
@@ -560,6 +1170,18 @@ export default function CanvasView({ root }: { root: string }) {
         canvas.defaultCursor = "grab";
       }
       if (e.target instanceof HTMLSelectElement) return;
+      if (isTogglePanelsKey(e)) {
+        e.preventDefault();
+        togglePanelsRef.current();
+        return;
+      }
+      const zoomAction = zoomKey(e);
+      if (zoomAction) {
+        e.preventDefault();
+        if (zoomAction === "fit") zoomOpsRef.current?.fit();
+        else zoomOpsRef.current?.step(zoomAction);
+        return;
+      }
       if (onPenKey(e)) return;
       if (e.metaKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -569,6 +1191,26 @@ export default function CanvasView({ root }: { root: string }) {
       if (e.metaKey && (e.key === "]" || e.key === "[")) {
         e.preventDefault();
         restack(e.key === "]" ? 1 : -1);
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (e.shiftKey) ungroup(selectedNodes());
+        else group(selectedNodes());
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        flatten(selectedNodes()).catch((error) => push(failureToast("Could not merge layers", error)));
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "c") {
+        copy(selectedNodes());
+        return;
+      }
+      if (e.metaKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        if (!edit) duplicate().catch((error) => push(failureToast("Could not duplicate", error)));
         return;
       }
       if (edit) {
@@ -635,10 +1277,10 @@ export default function CanvasView({ root }: { root: string }) {
     };
     canvas.on("mouse:down", ({ e }) => {
       const t = toolRef.current;
-      if (t === "select" || t === "pen" || spaceDown) return;
+      if (t === "select" || t === "pen" || t === "cut" || spaceDown) return;
       const start = canvas.getScenePoint(e);
       if (t === "text") {
-        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: "system-ui, sans-serif", fill: "#111827" });
+        const text = new IText("Text", { ...TOP_LEFT, left: start.x, top: start.y, fontSize: 20, fontFamily: TEXT_FONT, fill: DRAWING.text });
         canvas.add(text);
         finishShape(text, "text");
         text.enterEditing();
@@ -670,6 +1312,108 @@ export default function CanvasView({ root }: { root: string }) {
       canvas.add(shape);
       finishShape(shape, t);
     });
+    // Cut: the gesture cuts the topmost capture it reaches. Lasso and box cut
+    // a piece out (the capture keeps a transparent hole); a line splits the
+    // capture in two. The capture keeps its id, name, notes and links.
+    let cut: { mode: CutMode; points: Point[]; shift: boolean; preview: FabricObject | null } | null = null;
+    /** Scene outline of the part to cut; a line cut keeps its two ends. */
+    const cutOutline = (c: { mode: CutMode; points: Pt[]; shift: boolean }): Pt[] => {
+      const first = c.points[0];
+      const last = c.points[c.points.length - 1];
+      if (c.mode === "rect") return rectPolygon(first, last);
+      if (c.mode === "ellipse") return ellipsePolygon(dragBox(first, last, c.shift));
+      return c.mode === "line" ? [first, last] : c.points;
+    };
+    const drawCutPreview = () => {
+      if (!cut) return;
+      if (cut.preview) canvas.remove(cut.preview);
+      const [first] = cut.points;
+      const last = cut.points[cut.points.length - 1];
+      const style = { ...DISPLAY_ONLY, fill: "", stroke: currentTheme().sel, strokeWidth: 1.5 / canvas.getZoom(), strokeDashArray: [6 / canvas.getZoom(), 4 / canvas.getZoom()] };
+      const outline = cutOutline(cut);
+      cut.preview =
+        cut.mode === "line"
+          ? new Line([first.x, first.y, last.x, last.y], style)
+          : new Polyline(cut.mode === "lasso" ? outline : [...outline, outline[0]], style);
+      canvas.add(cut.preview);
+      canvas.requestRenderAll();
+    };
+    const cutCapture = async (mode: CutMode, points: Pt[]) => {
+      const captures = canvas
+        .getObjects()
+        .filter(isNode)
+        .filter((n): n is CaptureNode => n.sfKind === "capture" && isShown(n) && !n.sfLocked && n instanceof FabricImage)
+        .reverse();
+      for (const img of captures) {
+        const inverse = util.invertTransform(img.calcTransformMatrix()) as unknown as Matrix;
+        const local = toImagePoints(points, inverse, img.width, img.height);
+        const source = img.getElement() as CanvasImageSource;
+        const names = canvas.getObjects().filter(isNode).map((o) => o.sfName);
+        const pieceName = nextNodeName("capture", names, `${img.sfName} cut`);
+        const place = async (dataUrl: string, box: Box, target?: CaptureNode) => {
+          const center = pieceCenter(img, box);
+          const piece = target ?? (await FabricImage.fromURL(dataUrl));
+          if (target) await target.setSrc(dataUrl);
+          else {
+            tagAsNode(canvas, piece, "capture", pieceName);
+            // A piece comes from the same capture: same app, same moment.
+            Object.assign(piece, {
+              ...(img.sfSource && { sfSource: img.sfSource }),
+              ...(img.sfCapturedAt !== undefined && { sfCapturedAt: img.sfCapturedAt }),
+            });
+          }
+          piece.set({ left: center.x, top: center.y, scaleX: img.scaleX, scaleY: img.scaleY, angle: img.angle, flipX: img.flipX, flipY: img.flipY });
+          piece.setCoords();
+          return piece;
+        };
+        if (mode === "line") {
+          const halves = splitByLine(img.width, img.height, local[0], local[local.length - 1]);
+          if (!halves) continue;
+          const boxes = halves.map((h) => cropBox(h, img.width, img.height)!);
+          const urls = halves.map((h, i) => piecePng(source, h, boxes[i]));
+          // The new half is placed before the original is reshaped: both use its transform.
+          const other = await place(urls[1], boxes[1]);
+          await place(urls[0], boxes[0], img);
+          canvas.insertAt(canvas.getObjects().indexOf(img) + 1, other);
+          canvas.setActiveObject(other);
+        } else {
+          const poly = local;
+          const box = poly.length >= 3 ? cropBox(poly, img.width, img.height) : null;
+          if (!box) continue;
+          const piece = await place(piecePng(source, poly, box), box);
+          await img.setSrc(holedPng(source, img.width, img.height, poly));
+          canvas.insertAt(canvas.getObjects().indexOf(img) + 1, piece);
+          canvas.setActiveObject(piece);
+        }
+        canvas.requestRenderAll();
+        afterEditRef.current();
+        return;
+      }
+      push({ kind: "warn", title: "Nothing to cut", message: "Draw over a capture to cut a piece out." });
+    };
+    canvas.on("mouse:down", ({ e }) => {
+      if (toolRef.current !== "cut" || spaceDown) return;
+      cut = { mode: cutModeRef.current, points: [canvas.getScenePoint(e)], shift: e.shiftKey, preview: null };
+    });
+    canvas.on("mouse:move", ({ e }) => {
+      if (!cut) return;
+      const p = canvas.getScenePoint(e);
+      if (cut.mode === "lasso") cut.points.push(p);
+      else cut.points = [cut.points[0], p];
+      cut.shift = e.shiftKey;
+      drawCutPreview();
+    });
+    canvas.on("mouse:up", () => {
+      if (!cut) return;
+      const { mode, points, preview } = cut;
+      const outline = cutOutline(cut);
+      cut = null;
+      if (preview) canvas.remove(preview);
+      setTool("select");
+      if (points.length < 2) return;
+      cutCapture(mode, outline).catch((error) => push(failureToast("Cut failed", error)));
+    });
+
     // Pen: click for a corner, drag for a smooth point; click the first point to
     // close, Enter or Escape to finish open, Backspace to drop the last point.
     let pen: { anchors: Anchor[]; pressed: Point | null; cursor: Point | null; preview: FabricObject[] } | null = null;
@@ -823,16 +1567,21 @@ export default function CanvasView({ root }: { root: string }) {
       commit();
     });
 
-    // A captured, pasted or dropped image becomes a capture node.
-    const addImage = async (dataUrl: string, at: Point, name?: string) => {
+    // A captured, pasted or dropped image becomes a capture node. A window capture says
+    // which app it shows (`source`); a pasted or dropped one has no app, only its time.
+    const addImage = async (dataUrl: string, at: Point, name?: string, source?: string) => {
       const image = await FabricImage.fromURL(dataUrl);
       tagAsNode(canvas, image, "capture", name);
+      Object.assign(image, { sfCapturedAt: Date.now(), ...(source && { sfSource: source }) });
       // Fabric 7 objects are positioned by their center (originX/Y default to "center").
       image.set({ left: at.x, top: at.y });
       canvas.add(image);
       canvas.setActiveObject(image);
+      return image;
     };
-    addImageRef.current = (dataUrl, name) => addImage(dataUrl, canvas.getVpCenter(), name);
+    addImageRef.current = async (dataUrl, name, source) => {
+      await addImage(dataUrl, canvas.getVpCenter(), name, source);
+    };
     const addCapture = async (file: File, at: Point) => {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -843,10 +1592,17 @@ export default function CanvasView({ root }: { root: string }) {
       await addImage(dataUrl, at);
     };
     const onPaste = (e: ClipboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const file = firstImageFile(e.clipboardData?.files);
-      if (!file) return;
+      if (!file) {
+        if (clipboard) {
+          e.preventDefault();
+          paste().catch((error) => push(failureToast("Paste failed", error)));
+        }
+        return;
+      }
       e.preventDefault();
-      addCapture(file, canvas.getVpCenter()).catch((error) => setStatus(`Paste failed: ${String(error)}`));
+      addCapture(file, canvas.getVpCenter()).catch((error) => push(failureToast("Paste failed", error)));
     };
     // Requires dragDropEnabled: false on the Tauri window, otherwise Tauri swallows drops.
     const onDragOver = (e: DragEvent) => e.preventDefault();
@@ -854,7 +1610,7 @@ export default function CanvasView({ root }: { root: string }) {
       const file = firstImageFile(e.dataTransfer?.files);
       if (!file) return;
       e.preventDefault();
-      addCapture(file, canvas.getScenePoint(e)).catch((error) => setStatus(`Drop failed: ${String(error)}`));
+      addCapture(file, canvas.getScenePoint(e)).catch((error) => push(failureToast("Drop failed", error)));
     };
 
     const resize = new ResizeObserver(() => {
@@ -867,16 +1623,48 @@ export default function CanvasView({ root }: { root: string }) {
     container.addEventListener("dragover", onDragOver);
     container.addEventListener("drop", onDrop);
     // Cmd+Shift+X captures the window in front without bringing ScreenForge forward.
+    // The last capture is what the edge pill's card talks about (instructions, undo).
+    let lastCapture: (FabricObject & SfProps) | null = null;
     const unlistenShortcut = onShortcutCapture(
       ({ window, png_base64 }) =>
-        addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window))
-          .then(() => setStatus(`Captured ${captureName(window)}`))
-          .catch((error) => setStatus(`Capture failed: ${String(error)}`)),
-      (message) => setStatus(`Capture failed: ${message}`),
+        addImage(`data:image/png;base64,${png_base64}`, canvas.getVpCenter(), captureName(window), window.app_name)
+          .then((image) => {
+            lastCapture = image as unknown as FabricObject & SfProps;
+            push({ kind: "ok", title: "Captured", message: captureName(window) });
+          })
+          .catch((error) => push(failureToast("Capture failed", error))),
+      (message) => push(failureToast("Capture failed", message)),
     );
+    const pasteFromClipboard = async () => {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (!type) continue;
+        await addCapture(new File([await item.getType(type)], "clipboard", { type }), canvas.getVpCenter());
+        return;
+      }
+      push(failureToast("Paste failed", "There is no image on the clipboard."));
+    };
+    const unlistenPill = onPillRequest((request) => {
+      if (request.kind === "hello") {
+        lastSummary = -1;
+        refreshLayers();
+      } else if (request.kind === "paste") {
+        pasteFromClipboard().catch((error) => push(failureToast("Paste failed", error)));
+      } else if (request.kind === "instructions" && lastCapture) {
+        lastCapture.sfInstructions = request.text;
+        refreshLayers();
+        commit();
+      } else if (request.kind === "undo" && lastCapture) {
+        canvas.remove(lastCapture);
+        lastCapture = null;
+        commit();
+      }
+    });
 
     return () => {
       unlistenShortcut.then((unlisten) => unlisten());
+      unlistenPill.then((unlisten) => unlisten());
       resize.disconnect();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -884,6 +1672,8 @@ export default function CanvasView({ root }: { root: string }) {
       container.removeEventListener("dragover", onDragOver);
       container.removeEventListener("drop", onDrop);
       fabricRef.current = null;
+      disposed = true;
+      unlistenTheme();
       canvas.dispose();
     };
   }, [root]);
@@ -898,21 +1688,31 @@ export default function CanvasView({ root }: { root: string }) {
   }, [tool]);
 
   async function openPicker() {
+    const ticket = ++pickerTicket.current;
+    setPicker({ status: "loading" });
     try {
       const granted = await ensureScreenCaptureAccess();
-      setPicker({ windows: granted ? await listWindows() : [], permissionMissing: !granted });
+      const next: PickerState = granted ? { status: "list", windows: await listWindows() } : { status: "permission" };
+      if (ticket === pickerTicket.current) setPicker(next);
     } catch (error) {
-      setStatus(`Window list failed: ${String(error)}`);
+      if (ticket !== pickerTicket.current) return;
+      setPicker(null);
+      push(failureToast("Could not list windows", error));
     }
   }
 
-  async function pickWindow(w: WindowInfo) {
+  function closePicker() {
+    pickerTicket.current++;
     setPicker(null);
+  }
+
+  async function pickWindow(w: WindowInfo) {
+    closePicker();
     try {
       const png = await captureWindow(w.id);
-      await addImageRef.current(`data:image/png;base64,${png}`, captureName(w));
+      await addImageRef.current(`data:image/png;base64,${png}`, captureName(w), w.app_name);
     } catch (error) {
-      setStatus(`Capture failed: ${String(error)}`);
+      push(failureToast("Capture failed", error));
     }
   }
 
@@ -926,16 +1726,20 @@ export default function CanvasView({ root }: { root: string }) {
     const applies = appliesOf(obj);
     if (patch.style !== undefined && applies) {
       const { fill, ...props } = toFabricProps(patch.style, applies);
+      const widthChanged = props.strokeWidth !== undefined && props.strokeWidth !== obj.strokeWidth;
       obj.set({ ...props, fill: typeof fill === "string" ? fill : new Gradient(fill) });
       obj.setCoords();
+      if (obj.sfShape === "arrow" && widthChanged) canvas!.setActiveObject(redrawArrow(canvas!, obj as Path & SfProps));
       canvas!.requestRenderAll();
     }
     afterEditRef.current();
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
+      {showLayers && (
       <LayersPanel
+        floating={layout === "floating"}
         rows={layers}
         selectedId={selected?.id ?? null}
         onSelect={(id) => layerOpsRef.current?.select(id)}
@@ -944,61 +1748,107 @@ export default function CanvasView({ root }: { root: string }) {
         onToggleLocked={(id) => layerOpsRef.current?.toggleLocked(id)}
         onForward={() => layerOpsRef.current?.forward()}
         onBackward={() => layerOpsRef.current?.backward()}
+        onCollapse={hideLayers}
       />
+      )}
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
           otherwise, which pushes the inspector off screen. */}
-      <div className="relative min-w-0 flex-1 overflow-hidden">
-        <div className="absolute left-3 top-3 z-10 flex gap-2">
-          <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
-            {TOOLBAR.map(({ id, label, key, hint }) => (
+      <div
+        className="relative min-w-0 flex-1 overflow-hidden"
+        // A click on the canvas closes the floating layers panel.
+        onMouseDownCapture={() => setLayersOpen(false)}
+      >
+        {loadState === "ready" && layers.length === 0 && <EmptyCanvas onCapture={openPicker} />}
+        <InstructionPins pins={pins} calloutsEnabled={!selected} onPick={(id) => layerOpsRef.current?.select(id)} />
+        {!showLayers && <PanelOpener label="Layers" side="left" onClick={showLayersAgain} />}
+        {selected && panels.inspector && (
+          <PanelOpener label="Inspector" side="right" onClick={() => setPanels((p) => togglePanel(p, "inspector"))} />
+        )}
+        <ZoomControl
+          zoom={zoom}
+          onIn={() => zoomOpsRef.current?.step("in")}
+          onOut={() => zoomOpsRef.current?.step("out")}
+          onFit={() => zoomOpsRef.current?.fit()}
+        />
+        <Toolbar tool={tool} choice={choice} cutMode={cutMode} onTool={setTool} onCutMode={setCutMode} onCapture={openPicker} />
+        {selectionUi && (
+          <span
+            className="pointer-events-none absolute z-[6] -translate-x-1/2 rounded bg-sel px-[5px] py-px font-mono text-[10px] font-medium whitespace-nowrap text-acc-tx"
+            style={{ left: selectionUi.chip.x, top: selectionUi.chip.y }}
+          >
+            {selectionUi.chip.label}
+          </span>
+        )}
+        {booleanCount >= 2 && selectionUi && (
+          <div
+            onMouseDownCapture={(e) => e.stopPropagation()}
+            className="absolute z-10 flex items-center gap-0.5 rounded-[9px] border border-line2 bg-panel p-1 whitespace-nowrap shadow-panel"
+            style={{ left: selectionUi.bar.x, top: selectionUi.bar.y }}
+          >
+            <span className="pr-2 pl-1.5 text-[11px] text-tx3">{booleanCount} shapes</span>
+            {BOOLEAN_OPS.map(({ op, label }) => (
               <button
-                key={id}
-                onClick={() => setTool(id)}
-                aria-pressed={tool === id}
-                title={`${hint} (${key})`}
-                className={`px-3 py-1.5 text-sm ${tool === id ? "bg-neutral-900 text-white" : "hover:bg-neutral-50"}`}
+                key={op}
+                onClick={() => layerOpsRef.current?.combine(op)}
+                title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
+                className="h-[26px] rounded-md px-[9px] text-xs font-medium text-tx hover:bg-hover"
               >
                 {label}
               </button>
             ))}
           </div>
-          <button
-            onClick={openPicker}
-            title="Pick a window of this desktop. ⌘⇧X from any app captures the window in front."
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-neutral-50"
-          >
-            Capture window
-          </button>
-          {booleanCount >= 2 && (
-            <div className="flex overflow-hidden rounded-md border border-neutral-300 bg-white shadow-sm">
-              {BOOLEAN_OPS.map(({ op, label }) => (
-                <button
-                  key={op}
-                  onClick={() => layerOpsRef.current?.combine(op)}
-                  title={op === "subtract" ? "Remove the upper shapes from the bottom one" : `${label} of the selected shapes`}
-                  className="px-3 py-1.5 text-sm hover:bg-neutral-50"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
         {picker && (
           <WindowPicker
-            windows={picker.windows}
-            permissionMissing={picker.permissionMissing}
+            state={picker}
+            capture={captureWindow}
             onOpenSettings={() => openScreenCaptureSettings()}
+            onRetry={openPicker}
             onPick={pickWindow}
-            onCancel={() => setPicker(null)}
+            onCancel={closePicker}
           />
         )}
-        <div className="absolute bottom-2 right-3 z-10 text-xs text-neutral-400">{status}</div>
-        <div ref={containerRef} data-testid="canvas-root" className="h-full w-full">
-          <canvas ref={canvasElRef} />
-        </div>
+        <Toasts toasts={toasts} onClose={dismiss} />
+        <ContextMenu.Root>
+          <ContextMenu.Trigger asChild onContextMenu={(e) => menuOpsRef.current && setMenu(menuOpsRef.current.open(e.nativeEvent))}>
+            <div
+              ref={containerRef}
+              data-testid="canvas-root"
+              className="h-full w-full bg-canvas"
+              style={{ backgroundImage: "radial-gradient(var(--dot) 1px, transparent 1.2px)" }}
+            >
+              <canvas ref={canvasElRef} />
+            </div>
+          </ContextMenu.Trigger>
+          <ContextMenu.Portal>
+            <ContextMenu.Content className="z-40 min-w-48 rounded-md border border-line bg-panel p-1 text-sm shadow-lg">
+              {menuItems(menu.targets, menu.hasClipboard).map((item, i) =>
+                item === "separator" ? (
+                  <ContextMenu.Separator key={i} className="my-1 h-px bg-line" />
+                ) : (
+                  <ContextMenu.Item
+                    key={item.id}
+                    disabled={!item.enabled}
+                    onSelect={() => menuOpsRef.current?.run(item.id)}
+                    className="flex cursor-default items-center justify-between gap-6 rounded px-2 py-1 outline-none data-[disabled]:text-tx3 data-[highlighted]:bg-hover"
+                  >
+                    {item.label}
+                    {item.shortcut && <span className="text-xs text-tx3">{item.shortcut}</span>}
+                  </ContextMenu.Item>
+                ),
+              )}
+            </ContextMenu.Content>
+          </ContextMenu.Portal>
+        </ContextMenu.Root>
       </div>
-      {selected && <NodeInspector node={selected} others={others} onChange={onInspectorChange} />}
+      {selected && !panels.inspector && (
+        <NodeInspector
+          node={selected}
+          others={others}
+          onChange={onInspectorChange}
+          onCollapse={() => setPanels((p) => togglePanel(p, "inspector"))}
+        />
+      )}
     </div>
   );
 }

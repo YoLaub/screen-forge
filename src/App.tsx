@@ -1,20 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ClientResult } from "./agentCards";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
-import CanvasView from "./canvas/CanvasView";
+import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
+import Home from "./Home";
+import { type ExportSettings, parseExportSettings } from "./canvas/exportOptions";
+import TitleBar from "./TitleBar";
+import { lastReadLine } from "./agentRead";
+import { useLastRead } from "./useLastRead";
 import {
   agentStatus,
   configureAgent,
   getLastProject,
   pickFolder,
+  type RecentProject,
+  recentProjects,
   setLastProject,
 } from "./services/backend";
 
-const CONNECTED_HINT: Record<AgentClient, string> = {
-  claude_code: "Connected for every project. Restart running Claude Code sessions to use it.",
-  claude_desktop: "Connected. Quit and reopen Claude Desktop to load it.",
-};
-
 type ProjectState = { status: "loading" } | { status: "none" } | { status: "open"; root: string };
+
+const EXPORT_KEY = "screenforge.export";
 
 function folderName(root: string): string {
   return root.split("/").filter(Boolean).pop() ?? root;
@@ -24,78 +29,138 @@ export default function App() {
   const [project, setProject] = useState<ProjectState>({ status: "loading" });
   const [agents, setAgents] = useState<AgentStatus | null>(null);
   const [agentBusy, setAgentBusy] = useState<AgentClient | null>(null);
-  const [agentMessages, setAgentMessages] = useState<Partial<Record<AgentClient, string>>>({});
+  const [agentResults, setAgentResults] = useState<Partial<Record<AgentClient, ClientResult>>>({});
+  // The title bar shows the agent state without opening the dialog.
+  const [agentState, setAgentState] = useState<AgentStatus | null>(null);
+  const [recent, setRecent] = useState<RecentProject[]>([]);
+  const [saved, setSaved] = useState<Date | null>(null);
+  const lastRead = useLastRead(project.status === "open" ? project.root : null);
+  // The canvas loads behind the home screen's "Opening…" card and is revealed once it has.
+  const [loaded, setLoaded] = useState(false);
+  const [exportLabel, setExportLabel] = useState<string | null>(null);
+  const [exportSettings, setExportSettings] = useState<ExportSettings>(() => {
+    try {
+      return parseExportSettings(localStorage.getItem(EXPORT_KEY));
+    } catch {
+      return parseExportSettings(null);
+    }
+  });
+  const canvasControls = useRef<CanvasControls | null>(null);
+
+  // A list that cannot be read is just an empty list: the home screen still opens folders.
+  const refreshRecent = useCallback(() => {
+    recentProjects().then((list) => setRecent(Array.isArray(list) ? list : []), () => setRecent([]));
+  }, []);
+
+  const refreshAgents = async () => {
+    const status = await agentStatus();
+    setAgentState(status);
+    return status;
+  };
 
   useEffect(() => {
     getLastProject().then((root) =>
       setProject(root ? { status: "open", root } : { status: "none" }),
     );
-  }, []);
+    refreshAgents().catch(() => {});
+    refreshRecent();
+  }, [refreshRecent]);
+
+  async function openProject(root: string) {
+    await setLastProject(root);
+    setSaved(null);
+    setLoaded(false);
+    setProject({ status: "open", root });
+    // Opening recorded it: the list is now one project newer.
+    refreshRecent();
+  }
 
   async function openFolder() {
     const root = await pickFolder();
-    if (!root) return;
-    await setLastProject(root);
-    setProject({ status: "open", root });
+    if (root) await openProject(root);
   }
 
   async function openAgents() {
-    setAgentMessages({});
-    setAgents(await agentStatus());
+    setAgentResults({});
+    setAgents(await refreshAgents());
   }
 
   async function configure(client: AgentClient) {
     setAgentBusy(client);
     try {
       await configureAgent(client);
-      setAgentMessages((m) => ({ ...m, [client]: CONNECTED_HINT[client] }));
+      setAgentResults((r) => ({ ...r, [client]: { connected: true } }));
     } catch (error) {
-      setAgentMessages((m) => ({ ...m, [client]: `Failed: ${String(error)}` }));
+      setAgentResults((r) => ({ ...r, [client]: { error: String(error) } }));
     } finally {
       setAgentBusy(null);
-      setAgents(await agentStatus());
+      setAgents(await refreshAgents());
     }
   }
+
+  // Cmd+O opens the folder picker from the home screen and from the workspace.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        openFolder();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   if (project.status === "loading") return null;
 
   if (project.status === "none") {
     return (
-      <main className="flex h-screen w-screen items-center justify-center bg-neutral-100">
-        <div className="text-center">
-          <h1 className="mb-2 text-lg font-semibold text-neutral-800">ScreenForge</h1>
-          <p className="mb-6 text-sm text-neutral-500">
-            Pick the project folder. The canvas is saved in its <code>.screenforge/</code> folder.
-          </p>
-          <button
-            onClick={openFolder}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
-          >
-            Open a folder
-          </button>
-        </div>
+      <main className="h-screen w-screen">
+        <Home onOpen={openFolder} recent={recent} onOpenRecent={openProject} />
       </main>
     );
   }
 
   return (
-    <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-neutral-100">
-      <header className="flex items-center gap-3 border-b border-neutral-200 bg-white px-3 py-2 text-sm">
-        <span className="font-medium text-neutral-800" title={project.root}>
-          {folderName(project.root)}
-        </span>
-        <button onClick={openFolder} className="text-neutral-500 hover:text-neutral-900">
-          Change folder
-        </button>
-        <button onClick={openAgents} className="ml-auto text-neutral-500 hover:text-neutral-900">
-          Connect AI
-        </button>
-      </header>
-      <CanvasView key={project.root} root={project.root} />
+    <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-bg">
+      <TitleBar
+        folder={folderName(project.root)}
+        path={project.root}
+        onChangeFolder={openFolder}
+        saved={saved}
+        agentStatus={agentState}
+        lastRead={lastRead}
+        onAgent={openAgents}
+        exportLabel={exportLabel}
+        onExport={() => canvasControls.current?.exportPng(exportSettings)}
+        exportSettings={exportSettings}
+        onExportSettings={(next) => {
+          setExportSettings(next);
+          try {
+            localStorage.setItem(EXPORT_KEY, JSON.stringify(next));
+          } catch {
+            // Private window or blocked storage: the choice lasts until the app closes.
+          }
+        }}
+      />
+      <CanvasView
+        key={project.root}
+        root={project.root}
+        onLoaded={() => setLoaded(true)}
+        onSaved={setSaved}
+        onExportLabel={setExportLabel}
+        controls={canvasControls}
+      />
+      {!loaded && (
+        <div className="absolute inset-0 z-40">
+          <Home opening={folderName(project.root)} onOpen={openFolder} recent={recent} onOpenRecent={openProject} />
+        </div>
+      )}
       {agents && (
         <AgentSetup
           status={agents}
-          messages={agentMessages}
+          project={{ name: folderName(project.root), path: project.root }}
+          results={agentResults}
+          lastRead={lastRead && lastReadLine(lastRead, Date.now())}
           busy={agentBusy}
           onConfigure={configure}
           onClose={() => setAgents(null)}

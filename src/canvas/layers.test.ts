@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type LayerItem, layerRows, lockProps } from "./layers";
+import { hasInstructions, instructionCoverage, layerIcon, layersLayout, typeLabel } from "./layers";
 
 const item = (id: string, parent?: string, kind: LayerItem["kind"] = "vector_drawing"): LayerItem => ({
   id,
@@ -45,5 +46,57 @@ describe("lockProps", () => {
     });
     expect(lockProps(false).selectable).toBe(true);
     expect(lockProps(false).lockMovementX).toBe(false);
+  });
+});
+
+describe("layerIcon", () => {
+  it("names the icon from the node kind and the Fabric shape", () => {
+    expect(layerIcon({ kind: "frame" })).toBe("frame");
+    expect(layerIcon({ kind: "capture", type: "Image" })).toBe("capture");
+    expect(layerIcon({ kind: "vector_drawing", type: "Rect" })).toBe("rect");
+    expect(layerIcon({ kind: "vector_drawing", type: "Ellipse" })).toBe("ellipse");
+    expect(layerIcon({ kind: "vector_drawing", type: "Polygon" })).toBe("polygon");
+    expect(layerIcon({ kind: "vector_drawing", type: "Line" })).toBe("line");
+    expect(layerIcon({ kind: "vector_drawing", type: "IText" })).toBe("text");
+    // A live Fabric object reports "i-text"; its JSON says "IText".
+    expect(layerIcon({ kind: "vector_drawing", type: "i-text" })).toBe("text");
+    expect(layerIcon({ kind: "vector_drawing", type: "Path", shape: "arrow" })).toBe("arrow");
+    expect(layerIcon({ kind: "vector_drawing", type: "Path", shape: "cross" })).toBe("cross");
+    expect(layerIcon({ kind: "vector_drawing", type: "Path" })).toBe("path");
+    expect(layerIcon({ kind: "group" })).toBe("group");
+  });
+});
+
+describe("hasInstructions", () => {
+  it("counts only text that says something", () => {
+    expect(hasInstructions("Make it red")).toBe(true);
+    expect(hasInstructions("  \n ")).toBe(false);
+    expect(hasInstructions(undefined)).toBe(false);
+  });
+});
+
+describe("instructionCoverage", () => {
+  it("counts elements with instructions over all elements, group rows aside", () => {
+    const item = (id: string, instructed: boolean, kind: "vector_drawing" | "group" = "vector_drawing") => ({
+      id, name: id, kind, hidden: false, locked: false, instructed,
+    });
+    expect(instructionCoverage([item("a", true), item("b", false), item("c", true), item("g", true, "group")])).toEqual({ covered: 2, total: 3 });
+  });
+});
+
+describe("layersLayout", () => {
+  it("docks the panel from 1200 px and floats it below", () => {
+    expect(layersLayout(1400)).toBe("docked");
+    expect(layersLayout(1200)).toBe("docked");
+    expect(layersLayout(1199)).toBe("floating");
+  });
+});
+
+describe("typeLabel", () => {
+  it("names each element type for the inspector and link targets", () => {
+    expect(typeLabel("rect")).toBe("Rectangle");
+    expect(typeLabel("capture")).toBe("Capture");
+    expect(typeLabel("path")).toBe("Path");
+    expect(typeLabel("text")).toBe("Text");
   });
 });

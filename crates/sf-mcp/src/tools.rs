@@ -1,4 +1,5 @@
-//! Pure tool logic: reads a project's `.screenforge/` folder and builds tool payloads.
+//! Tool logic: reads a project's `.screenforge/` folder and builds tool payloads, and
+//! records each read for the app (`record_read`, the only write).
 //! The rmcp layer in `server.rs` only wraps these functions.
 
 use std::fs;
@@ -7,6 +8,7 @@ use std::path::Path;
 
 use serde_json::{Map, Value, json};
 use sf_core::node::NodeKind;
+use sf_core::reads;
 use sf_core::store::{self, PNG_FILE_NAME, SVG_FILE_NAME, StoreError};
 
 /// Messages shown to the agent. Kept as constants so tests compare them exactly.
@@ -119,6 +121,63 @@ pub fn node_dependencies(root: &Path, id: &str) -> Result<Value, ToolError> {
     }))
 }
 
+/// What a successful tool call showed the agent, for the app's "last read" note.
+#[derive(Debug, PartialEq)]
+pub struct ReadSummary {
+    pub nodes: usize,
+    pub with_instructions: usize,
+}
+
+fn has_instructions(node: &Value) -> bool {
+    node.get("user_instructions")
+        .and_then(Value::as_str)
+        .is_some_and(|text| !text.trim().is_empty())
+}
+
+/// Every node of a canvas snapshot.
+pub fn snapshot_summary(output: &ToolOutput) -> ReadSummary {
+    let nodes = output.json["nodes"].as_array().map_or(&[][..], Vec::as_slice);
+    ReadSummary {
+        nodes: nodes.len(),
+        with_instructions: nodes.iter().filter(|n| has_instructions(n)).count(),
+    }
+}
+
+/// The one node of a node detail.
+pub fn detail_summary(output: &ToolOutput) -> ReadSummary {
+    ReadSummary {
+        nodes: 1,
+        with_instructions: usize::from(has_instructions(&output.json)),
+    }
+}
+
+/// The node whose connections were asked for (the answer holds only ids).
+pub fn dependencies_summary(root: &Path, id: &str) -> ReadSummary {
+    let with_instructions = store::read_node(root, id)
+        .map(|n| !n.user_instructions.trim().is_empty())
+        .unwrap_or(false);
+    ReadSummary {
+        nodes: 1,
+        with_instructions: usize::from(with_instructions),
+    }
+}
+
+/// Records the read for the app to show. Best effort: if it cannot be written (read-only
+/// folder, no canvas yet) the agent's answer must not suffer, so the cause goes to stderr.
+pub fn record_read(root: &Path, tool: &str, client: Option<String>, summary: ReadSummary) {
+    let read = reads::AgentRead {
+        at_ms: reads::now_ms(),
+        tool: tool.to_string(),
+        client,
+        nodes: summary.nodes,
+        with_instructions: summary.with_instructions,
+    };
+    if let Err(e) = reads::write_last_read(root, &read) {
+        // stdout carries the protocol.
+        eprintln!("screenforge-mcp: could not record the read: {e}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,6 +198,9 @@ mod tests {
             },
             position: None,
             parent: None,
+            group: None,
+            source: None,
+            captured_at: None,
             text: None,
             style: None,
             colors_detected: vec!["#3B82F6".into()],

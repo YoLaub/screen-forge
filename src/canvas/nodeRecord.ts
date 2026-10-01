@@ -6,6 +6,12 @@ import { type NodeStyle, colorsOf } from "./style";
 /** Node metadata in the sf-core `node.json` shape (spec §7). */
 export type NodeKind = "capture" | "vector_drawing" | "frame";
 
+/** A group of nodes the user made; members are read together. */
+export interface GroupRef {
+  id: string;
+  name: string;
+}
+
 export interface NodeRecord {
   id: string;
   type: NodeKind;
@@ -13,6 +19,11 @@ export interface NodeRecord {
   dimensions: { width: number; height: number };
   position?: { x: number; y: number };
   parent?: string;
+  group?: GroupRef;
+  /** Captures: the app whose window was captured. */
+  source?: string;
+  /** Captures: when the image was captured or added, ISO 8601 UTC. */
+  captured_at?: string;
   text?: string;
   style?: NodeStyle;
   colors_detected: string[];
@@ -33,6 +44,14 @@ export interface SfProps {
   sfClosed?: boolean;
   /** Locked in the layers panel: not selectable or movable on the canvas. */
   sfLocked?: boolean;
+  /** Stroke-only shapes drawn as a path (no fill, not combinable). */
+  sfShape?: "arrow" | "cross";
+  /** Group the node belongs to (Cmd+G). */
+  sfGroup?: GroupRef;
+  /** Captures: the app whose window was captured (not set for pasted or dropped images). */
+  sfSource?: string;
+  /** Captures: when the image was captured or added to the canvas (Unix ms). */
+  sfCapturedAt?: number;
 }
 
 /** Serialized with the canvas (see FabricObject.customProperties). */
@@ -45,6 +64,10 @@ export const SF_PROPS: (keyof SfProps)[] = [
   "sfAnchors",
   "sfClosed",
   "sfLocked",
+  "sfShape",
+  "sfGroup",
+  "sfSource",
+  "sfCapturedAt",
 ];
 
 const ID_PREFIX: Record<NodeKind, string> = { capture: "cap", vector_drawing: "vec", frame: "frm" };
@@ -97,6 +120,9 @@ export function toNodeRecord(
     },
     ...(bounds && { position: { x: Math.round(bounds.left), y: Math.round(bounds.top) } }),
     ...(parent && { parent }),
+    ...(obj.sfGroup && { group: obj.sfGroup }),
+    ...(obj.sfSource && { source: obj.sfSource }),
+    ...(obj.sfCapturedAt !== undefined && { captured_at: new Date(obj.sfCapturedAt).toISOString() }),
     ...(text !== undefined && { text }),
     ...(style && Object.keys(style).length > 0 && { style }),
     colors_detected: style ? colorsOf(style) : [],
