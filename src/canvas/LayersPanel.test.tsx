@@ -19,6 +19,7 @@ function setup(selectedId: string | null = null, shown: LayerRow[] = rows, float
     onToggleLocked: vi.fn(),
     onForward: vi.fn(),
     onBackward: vi.fn(),
+    onCollapse: vi.fn(),
   };
   render(<LayersPanel rows={shown} selectedId={selectedId} floating={floating} {...handlers} />);
   return handlers;
@@ -77,5 +78,13 @@ describe("LayersPanel", () => {
   it("floats over the canvas when asked, docked otherwise", () => {
     setup(null, rows, true);
     expect(screen.getByRole("complementary", { name: "Layers" })).toHaveAttribute("data-layout", "floating");
+  });
+
+  it("folds away from a button in its header", () => {
+    const h = setup();
+    const hide = screen.getByRole("button", { name: "Hide layers" });
+    expect(hide).toHaveAttribute("title", "Hide layers (⇧⌘H hides both panels)");
+    fireEvent.click(hide);
+    expect(h.onCollapse).toHaveBeenCalled();
   });
 });

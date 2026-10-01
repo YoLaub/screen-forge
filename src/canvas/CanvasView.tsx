@@ -56,6 +56,8 @@ import NodeInspector, { type InspectorNode, type InspectorPatch } from "./NodeIn
 import WindowPicker, { type PickerState, captureName, type WindowInfo } from "./WindowPicker";
 import { type NodeKind, type SfProps, SF_PROPS, newNodeId, nextNodeName, toNodeRecord } from "./nodeRecord";
 import { type Matrix, cropBox, ellipsePolygon, rectPolygon, splitByLine, toImagePoints } from "./cut";
+import PanelOpener from "./PanelOpener";
+import { type PanelsState, browserStorage, isTogglePanelsKey, readPanels, toggleAll, togglePanel, writePanels } from "./panels";
 import Toolbar from "./Toolbar";
 import { type CutMode, type DrawingTool, type GroupChoice, SHAPE_NAMES, type Tool, rememberInGroup, arrowHeadSize, arrowPath, crossPath, dragBox, polygonPoints, snapLine, toolForKey } from "./tools";
 import { DRAWING, SHAPE_STYLE } from "./drawingDefaults";
@@ -500,6 +502,23 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   // Layers dock from 1200 px and float over the canvas below (mockup 1d).
   const [layout, setLayout] = useState(() => layersLayout(window.innerWidth));
   const [layersOpen, setLayersOpen] = useState(false);
+  // Side panels the user folded away; remembered between sessions.
+  const [panels, setPanels] = useState<PanelsState>(() => readPanels(browserStorage()));
+  useEffect(() => {
+    writePanels(browserStorage(), panels);
+  }, [panels]);
+  const showLayers = layout === "docked" ? !panels.layers : layersOpen;
+  const hideLayers = () => (layout === "floating" ? setLayersOpen(false) : setPanels((p) => togglePanel(p, "layers")));
+  const showLayersAgain = () => (layout === "floating" ? setLayersOpen(true) : setPanels((p) => togglePanel(p, "layers")));
+  // Shift+Cmd+H folds or brings back both panels, judging by what is on screen: a closed
+  // floating panel, or an inspector with nothing selected, counts as folded.
+  function togglePanels() {
+    const next = toggleAll({ layers: !showLayers, inspector: !(selected && !panels.inspector) });
+    setPanels(next);
+    if (layout === "floating") setLayersOpen(!next.layers);
+  }
+  const togglePanelsRef = useRef(togglePanels);
+  togglePanelsRef.current = togglePanels;
   useEffect(() => {
     const onResize = () => setLayout(layersLayout(window.innerWidth));
     window.addEventListener("resize", onResize);
@@ -1137,6 +1156,11 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
         canvas.defaultCursor = "grab";
       }
       if (e.target instanceof HTMLSelectElement) return;
+      if (isTogglePanelsKey(e)) {
+        e.preventDefault();
+        togglePanelsRef.current();
+        return;
+      }
       const zoomAction = zoomKey(e);
       if (zoomAction) {
         e.preventDefault();
@@ -1655,7 +1679,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
 
   return (
     <div className="relative flex min-h-0 flex-1">
-      {(layout === "docked" || layersOpen) && (
+      {showLayers && (
       <LayersPanel
         floating={layout === "floating"}
         rows={layers}
@@ -1666,6 +1690,7 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
         onToggleLocked={(id) => layerOpsRef.current?.toggleLocked(id)}
         onForward={() => layerOpsRef.current?.forward()}
         onBackward={() => layerOpsRef.current?.backward()}
+        onCollapse={hideLayers}
       />
       )}
       {/* min-w-0: a flex item never shrinks below its content (the fixed-size <canvas>)
@@ -1677,18 +1702,9 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       >
         {loadState === "ready" && layers.length === 0 && <EmptyCanvas onCapture={openPicker} />}
         <InstructionPins pins={pins} calloutsEnabled={!selected} onPick={(id) => layerOpsRef.current?.select(id)} />
-        {layout === "floating" && (
-          <button
-            onMouseDownCapture={(e) => e.stopPropagation()}
-            onClick={() => setLayersOpen((open) => !open)}
-            aria-pressed={layersOpen}
-            className="absolute top-3 left-3 z-20 flex h-[34px] items-center gap-1.5 rounded-[9px] border border-line2 bg-panel px-[11px] text-xs font-medium text-tx shadow-panel hover:bg-hover"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <path d="M8 2l6 3-6 3-6-3z M2 8.2l6 3 6-3 M2 11.2l6 3 6-3" />
-            </svg>
-            Layers
-          </button>
+        {!showLayers && <PanelOpener label="Layers" side="left" onClick={showLayersAgain} />}
+        {selected && panels.inspector && (
+          <PanelOpener label="Inspector" side="right" onClick={() => setPanels((p) => togglePanel(p, "inspector"))} />
         )}
         <ZoomControl
           zoom={zoom}
@@ -1767,7 +1783,14 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
           </ContextMenu.Portal>
         </ContextMenu.Root>
       </div>
-      {selected && <NodeInspector node={selected} others={others} onChange={onInspectorChange} />}
+      {selected && !panels.inspector && (
+        <NodeInspector
+          node={selected}
+          others={others}
+          onChange={onInspectorChange}
+          onCollapse={() => setPanels((p) => togglePanel(p, "inspector"))}
+        />
+      )}
     </div>
   );
 }
