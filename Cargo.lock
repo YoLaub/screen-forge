@@ -3603,7 +3603,6 @@ name = "screenforge"
 version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
- "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "serde",
@@ -3611,6 +3610,7 @@ dependencies = [
  "sf-core",
  "tauri",
  "tauri-build",
+ "tauri-nspanel",
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "xcap",
@@ -4253,6 +4253,19 @@ dependencies = [
  "syn 2.0.119",
  "tauri-codegen",
  "tauri-utils",
+]
+
+[[package]]
+name = "tauri-nspanel"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22bb64ec3d255f02140d06b8f6b8ecefb1150e83fb9526ee38ecc1c98defa381"
+dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "pastey",
+ "tauri",
 ]
 
 [[package]]
