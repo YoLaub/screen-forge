@@ -6,6 +6,7 @@
 pub mod app_state;
 pub mod node;
 pub mod project;
+pub mod reads;
 pub mod store;
 
 use std::path::{Path, PathBuf};
