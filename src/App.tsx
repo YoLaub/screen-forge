@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ClientResult } from "./agentCards";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
 import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
+import Home from "./Home";
 import TitleBar from "./TitleBar";
 import { agentPill } from "./titleBarState";
 import {
@@ -26,6 +27,8 @@ export default function App() {
   // The title bar shows the agent state without opening the dialog.
   const [agentState, setAgentState] = useState<AgentStatus | null>(null);
   const [saved, setSaved] = useState<Date | null>(null);
+  // The canvas loads behind the home screen's "Opening…" card and is revealed once it has.
+  const [loaded, setLoaded] = useState(false);
   const [exportLabel, setExportLabel] = useState<string | null>(null);
   const canvasControls = useRef<CanvasControls | null>(null);
 
@@ -47,6 +50,7 @@ export default function App() {
     if (!root) return;
     await setLastProject(root);
     setSaved(null);
+    setLoaded(false);
     setProject({ status: "open", root });
   }
 
@@ -68,27 +72,24 @@ export default function App() {
     }
   }
 
+  // Cmd+O opens the folder picker from the home screen and from the workspace.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        openFolder();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   if (project.status === "loading") return null;
 
   if (project.status === "none") {
     return (
-      <main className="flex h-screen w-screen flex-col bg-bg">
-        {/* Room for the traffic lights, and a handle to move the window. */}
-        <div data-tauri-drag-region className="h-11 flex-none" />
-        <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <h1 className="mb-2 text-lg font-semibold text-tx">ScreenForge</h1>
-          <p className="mb-6 text-sm text-tx2">
-            Pick the project folder. The canvas is saved in its <code>.screenforge/</code> folder.
-          </p>
-          <button
-            onClick={openFolder}
-            className="rounded-md bg-acc px-4 py-2 text-sm font-medium text-acc-tx hover:opacity-90"
-          >
-            Open a folder
-          </button>
-        </div>
-        </div>
+      <main className="h-screen w-screen">
+        <Home onOpen={openFolder} />
       </main>
     );
   }
@@ -108,10 +109,16 @@ export default function App() {
       <CanvasView
         key={project.root}
         root={project.root}
+        onLoaded={() => setLoaded(true)}
         onSaved={setSaved}
         onExportLabel={setExportLabel}
         controls={canvasControls}
       />
+      {!loaded && (
+        <div className="absolute inset-0 z-40">
+          <Home opening={folderName(project.root)} onOpen={openFolder} />
+        </div>
+      )}
       {agents && (
         <AgentSetup
           status={agents}

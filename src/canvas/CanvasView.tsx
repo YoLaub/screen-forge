@@ -472,6 +472,8 @@ export interface CanvasControls {
 
 interface CanvasViewProps {
   root: string;
+  /** Called once the saved canvas has been loaded, or has failed to (the failure is shown as a toast). */
+  onLoaded?: () => void;
   /** Called after every successful save. */
   onSaved?: (at: Date) => void;
   /** Label of the Export action for the current selection. */
@@ -479,7 +481,7 @@ interface CanvasViewProps {
   controls?: { current: CanvasControls | null };
 }
 
-export default function CanvasView({ root, onSaved, onExportLabel, controls }: CanvasViewProps) {
+export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, controls }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
@@ -519,6 +521,8 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
   const exportRef = useRef<() => Promise<void>>(async () => {});
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
   useEffect(() => {
     onExportLabel?.(exportTo.label);
   }, [exportTo.label, onExportLabel]);
@@ -1095,6 +1099,8 @@ export default function CanvasView({ root, onSaved, onExportLabel, controls }: C
       })
       .finally(() => {
         loading = false;
+        // A canvas disposed before its load ended (development double mount) says nothing.
+        if (!disposed) onLoadedRef.current?.();
       });
 
     // Trackpad: two-finger scroll pans, pinch (ctrlKey) or Cmd+wheel zooms.
