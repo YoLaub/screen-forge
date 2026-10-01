@@ -7,6 +7,16 @@ mod project;
 const SHORTCUT_CAPTURE: &str = "shortcut-capture";
 const SHORTCUT_CAPTURE_FAILED: &str = "shortcut-capture-failed";
 
+#[cfg(target_os = "macos")]
+fn tauri_nspanel_init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri_nspanel::init()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn tauri_nspanel_init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("no-nspanel").build()
+}
+
 /// Captures the window in front and tells every window, like the global shortcut does.
 #[tauri::command]
 async fn capture_front(app: tauri::AppHandle) -> Result<(), String> {
@@ -22,6 +32,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(pill::PillTop::default())
+        .plugin(tauri_nspanel_init())
         .setup(|app| {
             use tauri::Emitter;
             use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};

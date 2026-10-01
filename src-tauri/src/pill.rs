@@ -46,7 +46,9 @@ pub fn frame(state: PillState, screen: Rect, top: f64) -> Rect {
 }
 
 use std::sync::Mutex;
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl};
+#[cfg(not(target_os = "macos"))]
+use tauri::WebviewWindowBuilder;
 
 /// Distance from the top of the screen, kept across state changes.
 pub struct PillTop(Mutex<f64>);
@@ -83,33 +85,50 @@ fn place(app: &AppHandle, state: PillState) -> Result<(), String> {
     window.set_position(LogicalPosition::new(f.x, f.y)).map_err(|e| e.to_string())
 }
 
-/// `NSStatusWindowLevel`: above full-screen apps and the menu bar's items.
 #[cfg(target_os = "macos")]
-const STATUS_WINDOW_LEVEL: isize = 25;
-
-/// Shows the window on every desktop, including the ones of full-screen apps, and keeps
-/// it out of the window cycling (Cmd+`) and of Mission Control's moves.
-#[cfg(target_os = "macos")]
-fn join_every_space(window: &tauri::WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
-    use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior as B, NSWindowStyleMask};
-    let ns_window = window.ns_window()? as *const NSWindow;
-    // SAFETY: the pointer comes from the live window, and `create` runs on the main thread.
-    unsafe {
-        (*ns_window).setCollectionBehavior(
-            B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle,
-        );
-        // Over another app's full-screen desktop, macOS only keeps windows that are
-        // non-activating (panel behavior) and above the status bar level.
-        let mask = (*ns_window).styleMask();
-        (*ns_window).setStyleMask(mask | NSWindowStyleMask::NonactivatingPanel);
-        (*ns_window).setLevel(STATUS_WINDOW_LEVEL);
-    }
-    Ok(())
+tauri_nspanel::tauri_panel! {
+    panel!(PillPanel {
+        config: {
+            can_become_key_window: true,
+            is_floating_panel: true
+        }
+    })
 }
 
 /// Opens the pill, collapsed against the right edge, on every desktop.
+///
+/// On macOS it is a real `NSPanel`: only panels that do not activate the app are kept
+/// by the system when the desktop changes or an app is full screen.
+#[cfg(target_os = "macos")]
 pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let window = WebviewWindowBuilder::new(app, PILL_LABEL, WebviewUrl::App("index.html?window=pill".into()))
+    use tauri_nspanel::{CollectionBehavior, PanelBuilder, PanelLevel, StyleMask};
+    let (w, h) = size(PillState::Collapsed);
+    let panel = PanelBuilder::<_, PillPanel>::new(app, PILL_LABEL)
+        .url(WebviewUrl::App("index.html?window=pill".into()))
+        .title("ScreenForge pill")
+        .size(LogicalSize::new(w, h).into())
+        .with_window(|window| window.decorations(false).resizable(false).shadow(false))
+        .add_style_mask(StyleMask::empty().nonactivating_panel())
+        .level(PanelLevel::Status)
+        .collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()
+                .full_screen_auxiliary()
+                .stationary()
+                .ignores_cycle(),
+        )
+        .has_shadow(false)
+        .transparent(true)
+        .hides_on_deactivate(false)
+        .build()?;
+    panel.show();
+    place(app, PillState::Collapsed)?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    WebviewWindowBuilder::new(app, PILL_LABEL, WebviewUrl::App("index.html?window=pill".into()))
         .title("ScreenForge pill")
         .inner_size(size(PillState::Collapsed).0, size(PillState::Collapsed).1)
         .decorations(false)
@@ -120,8 +139,6 @@ pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .visible_on_all_workspaces(true)
         .skip_taskbar(true)
         .build()?;
-    #[cfg(target_os = "macos")]
-    join_every_space(&window)?;
     place(app, PillState::Collapsed)?;
     Ok(())
 }
