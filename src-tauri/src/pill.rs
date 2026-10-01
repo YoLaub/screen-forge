@@ -27,7 +27,7 @@ pub struct Rect {
 pub fn size(state: PillState) -> (f64, f64) {
     match state {
         PillState::Collapsed => (14.0, 72.0),
-        PillState::Expanded => (52.0, 252.0),
+        PillState::Expanded => (232.0, 262.0),
         PillState::Captured => (280.0, 330.0),
     }
 }
@@ -83,9 +83,24 @@ fn place(app: &AppHandle, state: PillState) -> Result<(), String> {
     window.set_position(LogicalPosition::new(f.x, f.y)).map_err(|e| e.to_string())
 }
 
+/// Shows the window on every desktop, including the ones of full-screen apps, and keeps
+/// it out of the window cycling (Cmd+`) and of Mission Control's moves.
+#[cfg(target_os = "macos")]
+fn join_every_space(window: &tauri::WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
+    use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior as B};
+    let ns_window = window.ns_window()? as *const NSWindow;
+    // SAFETY: the pointer comes from the live window, and `create` runs on the main thread.
+    unsafe {
+        (*ns_window).setCollectionBehavior(
+            B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle,
+        );
+    }
+    Ok(())
+}
+
 /// Opens the pill, collapsed against the right edge, on every desktop.
 pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    WebviewWindowBuilder::new(app, PILL_LABEL, WebviewUrl::App("index.html?window=pill".into()))
+    let window = WebviewWindowBuilder::new(app, PILL_LABEL, WebviewUrl::App("index.html?window=pill".into()))
         .title("ScreenForge pill")
         .inner_size(size(PillState::Collapsed).0, size(PillState::Collapsed).1)
         .decorations(false)
@@ -96,6 +111,8 @@ pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .visible_on_all_workspaces(true)
         .skip_taskbar(true)
         .build()?;
+    #[cfg(target_os = "macos")]
+    join_every_space(&window)?;
     place(app, PillState::Collapsed)?;
     Ok(())
 }

@@ -80,6 +80,14 @@ describe("Pill", () => {
     expect(mocked.sendPillRequest).toHaveBeenCalledWith({ kind: "hello" });
   });
 
+  it("says in words what each action does", async () => {
+    await open();
+    expect(screen.getByText("Adds the window in front to the canvas")).toBeInTheDocument();
+    expect(screen.getByText("Pick which window to capture")).toBeInTheDocument();
+    expect(screen.getByText("Adds the copied image to the canvas")).toBeInTheDocument();
+    expect(screen.getByText("Shows the main window")).toBeInTheDocument();
+  });
+
   it("captures the window in front from the first button", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Capture frontmost window" }));
@@ -105,7 +113,7 @@ describe("Pill", () => {
   it("shows the agent and the number of instructions on the canvas", async () => {
     await open();
     act(() => emitSummary(4));
-    expect(screen.getByTitle("Claude Code connected · 4 instructions on canvas")).toBeInTheDocument();
+    expect(screen.getByText("Claude Code connected · 4 instructions on canvas")).toBeInTheDocument();
   });
 
   it("shows a card after a capture, with the source and the thumbnail", async () => {
