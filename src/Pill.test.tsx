@@ -5,6 +5,10 @@ import * as backend from "./services/backend";
 
 vi.mock("./services/backend", () => ({
   agentStatus: vi.fn(),
+  captureChosen: vi.fn(),
+  ensureScreenCaptureAccess: vi.fn(),
+  listWindows: vi.fn(),
+  openScreenCaptureSettings: vi.fn(),
   captureFront: vi.fn(),
   getLastProject: vi.fn(),
   lastAgentRead: vi.fn(),
@@ -40,6 +44,12 @@ beforeEach(() => {
   mocked.lastAgentRead.mockResolvedValue(null);
   mocked.pillSetState.mockResolvedValue();
   mocked.captureFront.mockResolvedValue();
+  mocked.captureChosen.mockResolvedValue();
+  mocked.ensureScreenCaptureAccess.mockResolvedValue(true);
+  mocked.listWindows.mockResolvedValue([
+    { id: 7, app_name: "Safari", title: "Login", width: 1280, height: 864 },
+    { id: 9, app_name: "Figma", title: "", width: 1000, height: 700 },
+  ]);
   mocked.sendPillRequest.mockResolvedValue();
   mocked.showMainWindow.mockResolvedValue();
   mocked.onCaptured.mockImplementation(async (h) => {
@@ -83,7 +93,7 @@ describe("Pill", () => {
   it("says in words what each action does", async () => {
     await open();
     expect(screen.getByText("Adds the window in front to the canvas")).toBeInTheDocument();
-    expect(screen.getByText("Pick which window to capture")).toBeInTheDocument();
+    expect(screen.getByText("Lists the windows on this desktop")).toBeInTheDocument();
     expect(screen.getByText("Adds the copied image to the canvas")).toBeInTheDocument();
     expect(screen.getByText("Shows the main window")).toBeInTheDocument();
   });
@@ -94,12 +104,44 @@ describe("Pill", () => {
     expect(mocked.captureFront).toHaveBeenCalledTimes(1);
   });
 
-  it("asks the canvas to open the picker or paste, and brings the app forward", async () => {
+  it("lists the windows of the current desktop in the pill, without opening the app", async () => {
     await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Choose a window…" })));
-    expect(mocked.showMainWindow).toHaveBeenCalled();
-    expect(mocked.sendPillRequest).toHaveBeenLastCalledWith({ kind: "pick" });
+    expect(mocked.showMainWindow).not.toHaveBeenCalled();
+    expect(mocked.pillSetState).toHaveBeenLastCalledWith("picking");
+    expect(screen.getAllByText("Safari").length).toBeGreaterThan(0);
+    expect(screen.getByText("Login")).toBeInTheDocument();
+    expect(screen.getAllByText("Figma").length).toBeGreaterThan(0);
+  });
+
+  it("captures the window clicked in the list", async () => {
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Choose a window…" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: /Safari/ })));
+    expect(mocked.captureChosen).toHaveBeenCalledWith(7);
+  });
+
+  it("explains a missing Screen Recording permission and offers the settings", async () => {
+    mocked.ensureScreenCaptureAccess.mockResolvedValue(false);
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Choose a window…" })));
+    expect(screen.getByText(/Screen Recording permission needed/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Screen Recording settings" }));
+    expect(mocked.openScreenCaptureSettings).toHaveBeenCalled();
+  });
+
+  it("closes the list with Escape", async () => {
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Choose a window…" })));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryAllByText("Figma")).toHaveLength(0);
+    expect(mocked.pillSetState).toHaveBeenLastCalledWith("collapsed");
+  });
+
+  it("asks the canvas to paste, and brings the app forward", async () => {
+    await open();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Paste image from clipboard" })));
+    expect(mocked.showMainWindow).toHaveBeenCalled();
     expect(mocked.sendPillRequest).toHaveBeenLastCalledWith({ kind: "paste" });
   });
 

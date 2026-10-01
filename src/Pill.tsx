@@ -3,9 +3,15 @@ import type { ReactNode } from "react";
 import type { AgentStatus } from "./AgentSetup";
 import Logo from "./Logo";
 import { agentTooltip, captureLines, nextMode, type PillEvent, type PillMode, shouldAutoDismiss } from "./pillState";
+import { groupWindows } from "./canvas/pickerModel";
+import type { WindowInfo } from "./canvas/WindowPicker";
 import {
   agentStatus,
+  captureChosen,
   captureFront,
+  ensureScreenCaptureAccess,
+  listWindows,
+  openScreenCaptureSettings,
   onCanvasSummary,
   onCaptured,
   onCaptureFailed,
@@ -17,6 +23,8 @@ import {
 } from "./services/backend";
 import { agentPill } from "./titleBarState";
 import { BRAND } from "./theme/tokens";
+
+type Listing = { status: "loading" } | { status: "list"; windows: WindowInfo[] } | { status: "permission" };
 
 type Card = { kind: "ok"; capture: ShortcutCapture } | { kind: "error"; message: string };
 
@@ -80,6 +88,7 @@ export default function Pill() {
   const [busy, setBusy] = useState(false);
   const [instructions, setInstructions] = useState<number | null>(null);
   const [status, setStatus] = useState<AgentStatus | null>(null);
+  const [listing, setListing] = useState<Listing>({ status: "loading" });
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const modeRef = useRef(mode);
@@ -129,7 +138,7 @@ export default function Pill() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && modeRef.current === "captured") dismiss();
+      if (e.key === "Escape" && (modeRef.current === "captured" || modeRef.current === "picking")) dismiss();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -152,9 +161,35 @@ export default function Pill() {
     }
   }
 
-  async function askCanvas(kind: "pick" | "paste") {
+  async function askPaste() {
     await showMainWindow();
-    await sendPillRequest({ kind });
+    await sendPillRequest({ kind: "paste" });
+  }
+
+  // The list is made here, not in the main window: windows are listed for the desktop
+  // we are on, and bringing the main window forward could switch to another one.
+  async function startPicking() {
+    setListing({ status: "loading" });
+    go("pick");
+    try {
+      const granted = await ensureScreenCaptureAccess();
+      setListing(granted ? { status: "list", windows: await listWindows() } : { status: "permission" });
+    } catch (error) {
+      dismiss();
+      setCard({ kind: "error", message: String(error) });
+      go("captured");
+    }
+  }
+
+  async function pickWindow(w: WindowInfo) {
+    setBusy(true);
+    try {
+      await captureChosen(w.id);
+    } catch (error) {
+      setBusy(false);
+      setCard({ kind: "error", message: String(error) });
+      go("captured");
+    }
   }
 
   function startDrag(e: React.MouseEvent) {
@@ -221,13 +256,13 @@ export default function Pill() {
               <circle cx="8" cy="8" r="2.2" />
             </svg>
           </Action>
-          <Action label="Choose a window…" detail="Pick which window to capture" onClick={() => askCanvas("pick")}>
+          <Action label="Choose a window…" detail="Lists the windows on this desktop" onClick={startPicking}>
             <svg {...ICON}>
               <rect x="1.5" y="3" width="9" height="7" rx="1.5" />
               <rect x="5.5" y="6" width="9" height="7" rx="1.5" />
             </svg>
           </Action>
-          <Action label="Paste image from clipboard" detail="Adds the copied image to the canvas" onClick={() => askCanvas("paste")}>
+          <Action label="Paste image from clipboard" detail="Adds the copied image to the canvas" onClick={() => askPaste()}>
             <svg {...ICON}>
               <rect x="3" y="3" width="10" height="11" rx="1.5" />
               <path d="M6 2.5h4v2H6z" />
@@ -242,6 +277,61 @@ export default function Pill() {
           <div className="flex items-center gap-2 px-2 py-1 text-[11px] text-tx2">
             <span className={`h-2 w-2 flex-none rounded-full ${pill.connected ? "bg-ok shadow-[0_0_0_3px_var(--ok-soft)]" : "bg-tx3"}`} />
             <span className="flex-1 leading-tight">{agentLine}</span>
+          </div>
+        </div>
+      )}
+
+      {mode === "picking" && (
+        <div className="flex h-full w-full flex-col overflow-hidden rounded-l-xl border border-r-0 border-line2 bg-panel">
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <span className="font-semibold">Capture which window?</span>
+            <button type="button" aria-label="Close" onClick={dismiss} className="grid h-6 w-6 place-items-center rounded-md text-tx3 hover:bg-hover">
+              <svg width="11" height="11" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-1.5">
+            {listing.status === "loading" && <div className="px-2 py-3 text-tx3">Looking for open windows…</div>}
+            {listing.status === "permission" && (
+              <div className="flex flex-col gap-2 px-2 py-3">
+                <div className="font-semibold">Screen Recording permission needed</div>
+                <button
+                  type="button"
+                  onClick={() => openScreenCaptureSettings().catch(() => {})}
+                  className="h-7 self-start rounded-[7px] bg-acc px-2.5 font-semibold text-acc-tx"
+                >
+                  Open Screen Recording settings
+                </button>
+                <button type="button" onClick={startPicking} className="h-7 self-start rounded-[7px] border border-line2 px-2.5 text-tx">
+                  Try again
+                </button>
+              </div>
+            )}
+            {listing.status === "list" && listing.windows.length === 0 && (
+              <div className="px-2 py-3 text-tx3">No window to capture on this desktop.</div>
+            )}
+            {listing.status === "list" &&
+              groupWindows(listing.windows, "").groups.map((g) => (
+                <div key={g.app} className="mb-1">
+                  <div className="px-2 pb-0.5 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-tx3">{g.app}</div>
+                  {g.items.map(({ window: w }) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => pickWindow(w)}
+                      className="flex w-full flex-col rounded-[7px] px-2 py-1 text-left leading-tight hover:bg-hover"
+                    >
+                      <span className="sr-only">{w.app_name}</span>
+                      <span className="truncate font-medium">{w.title || w.app_name}</span>
+                      <span className="font-mono text-[10px] text-tx3">
+                        {w.width} × {w.height}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ))}
           </div>
         </div>
       )}

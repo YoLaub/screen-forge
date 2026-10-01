@@ -502,7 +502,6 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
   // Set inside the canvas effect, used by inspector edits and the toolbar.
   const afterEditRef = useRef<() => void>(() => {});
   const applyToolRef = useRef<(t: Tool) => void>(() => {});
-  const openPickerRef = useRef<() => void>(() => {});
   const addImageRef = useRef<(dataUrl: string, name?: string, source?: string) => Promise<void>>(async () => {});
   const [tool, setTool] = useState<Tool>("select");
   const [cutMode, setCutMode] = useState<CutMode>("lasso");
@@ -1649,8 +1648,6 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       if (request.kind === "hello") {
         lastSummary = -1;
         refreshLayers();
-      } else if (request.kind === "pick") {
-        openPickerRef.current();
       } else if (request.kind === "paste") {
         pasteFromClipboard().catch((error) => push(failureToast("Paste failed", error)));
       } else if (request.kind === "instructions" && lastCapture) {
@@ -1702,8 +1699,6 @@ export default function CanvasView({ root, onLoaded, onSaved, onExportLabel, con
       push(failureToast("Could not list windows", error));
     }
   }
-
-  openPickerRef.current = openPicker;
 
   function closePicker() {
     pickerTicket.current++;

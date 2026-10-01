@@ -13,6 +13,7 @@ pub enum PillState {
     Collapsed,
     Expanded,
     Captured,
+    Picking,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +30,7 @@ pub fn size(state: PillState) -> (f64, f64) {
         PillState::Collapsed => (14.0, 72.0),
         PillState::Expanded => (280.0, 310.0),
         PillState::Captured => (280.0, 330.0),
+        PillState::Picking => (280.0, 360.0),
     }
 }
 

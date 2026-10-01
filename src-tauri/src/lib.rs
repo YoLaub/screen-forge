@@ -27,6 +27,20 @@ async fn capture_front(app: tauri::AppHandle) -> Result<(), String> {
     app.emit(SHORTCUT_CAPTURE, capture).map_err(|e| e.to_string())
 }
 
+/// Captures window `id` and tells every window, like the global shortcut does.
+#[tauri::command]
+async fn capture_chosen(app: tauri::AppHandle, id: u32) -> Result<(), String> {
+    use tauri::Emitter;
+    let window = capture::list_windows()
+        .await?
+        .into_iter()
+        .find(|w| w.id == id)
+        .ok_or("This window is not on the current desktop any more.")?;
+    let png_base64 = capture::capture_window(id).await?;
+    app.emit(SHORTCUT_CAPTURE, capture::ShortcutCapture { window, png_base64 })
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -82,6 +96,7 @@ pub fn run() {
             pill::pill_set_top,
             pill::show_main_window,
             capture_front,
+            capture_chosen,
             capture::list_windows,
             capture::capture_window,
             capture::ensure_screen_capture_access,
