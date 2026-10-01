@@ -40,6 +40,21 @@ export function lastAgentRead(root: string): Promise<AgentRead | null> {
   return invoke("last_agent_read", { root });
 }
 
+/** A recently opened project, as the home screen lists it. */
+export interface RecentProject {
+  path: string;
+  /** The folder's own name. */
+  name: string;
+  /** The path with the home folder written `~`. */
+  display: string;
+  opened_ms: number;
+}
+
+/** Recently opened projects, newest first. */
+export function recentProjects(): Promise<RecentProject[]> {
+  return invoke("recent_projects");
+}
+
 export function loadCanvas(root: string): Promise<string | null> {
   return invoke("load_canvas", { root });
 }

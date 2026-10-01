@@ -11,6 +11,7 @@ vi.mock("./services/backend", () => ({
   agentStatus: vi.fn(),
   configureAgent: vi.fn(),
   lastAgentRead: vi.fn(),
+  recentProjects: vi.fn(),
 }));
 
 const exportSpy = vi.fn();
@@ -50,6 +51,7 @@ describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue([]);
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
 
@@ -92,6 +94,7 @@ describe("title bar", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue([]);
     mocked.getLastProject.mockResolvedValue("/work/my-app");
   });
 
@@ -133,6 +136,7 @@ describe("Connect AI from the title bar", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue([]);
     mocked.getLastProject.mockResolvedValue("/work/my-app");
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
@@ -175,6 +179,7 @@ describe("Home and opening", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue([]);
     mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
   });
 
@@ -238,6 +243,7 @@ describe("Last read by an agent", () => {
     mocked.getLastProject.mockResolvedValue("/work/my-app");
     mocked.agentStatus.mockResolvedValue({ ...NOT_CONNECTED, claude_code: { available: true, registered: "/app/screenforge-mcp" } });
     mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue([]);
   });
 
   it("asks for the open project's last read", async () => {
@@ -266,5 +272,55 @@ describe("Last read by an agent", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Claude Code connected" }));
     expect(await screen.findByText("No agent has read this canvas yet.")).toBeInTheDocument();
+  });
+});
+
+describe("Recent projects", () => {
+  const recent = [
+    { path: "/Users/me/dev/acme-dashboard", name: "acme-dashboard", display: "~/dev/acme-dashboard", opened_ms: Date.now() - 1000 },
+    { path: "/Users/me/dev/billing-api", name: "billing-api", display: "~/dev/billing-api", opened_ms: Date.now() - 86_400_000 },
+  ];
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocked.agentStatus.mockResolvedValue(NOT_CONNECTED);
+    mocked.lastAgentRead.mockResolvedValue(null);
+    mocked.getLastProject.mockResolvedValue(null);
+    mocked.recentProjects.mockResolvedValue(recent);
+    mocked.setLastProject.mockResolvedValue(undefined);
+  });
+
+  it("lists them on the home screen", async () => {
+    render(<App />);
+    expect(await screen.findByRole("button", { name: /billing-api/ })).toHaveTextContent("~/dev/billing-api");
+  });
+
+  it("opens one on click, remembering it", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /billing-api/ }));
+    expect(await screen.findByTestId("canvas-view")).toHaveTextContent("/Users/me/dev/billing-api");
+    expect(mocked.setLastProject).toHaveBeenCalledWith("/Users/me/dev/billing-api");
+    expect(mocked.pickFolder).not.toHaveBeenCalled();
+  });
+
+  it("asks again for the list once a project is opened, so it is up to date next time", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /billing-api/ }));
+    await screen.findByTestId("canvas-view");
+    expect(mocked.recentProjects.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("is still usable when the list cannot be read", async () => {
+    mocked.recentProjects.mockRejectedValue(new Error("no config folder"));
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Open a folder" })).toBeInTheDocument();
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument();
+  });
+
+  it("keeps listing them under the Opening card when the last project reopens at start", async () => {
+    mocked.getLastProject.mockResolvedValue("/Users/me/dev/acme-dashboard");
+    render(<App />);
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening acme-dashboard…");
+    expect(await screen.findByRole("button", { name: /billing-api/ })).toBeDisabled();
   });
 });

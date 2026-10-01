@@ -1,3 +1,5 @@
+import { clock, dayMonth, daysAgo } from "./dates";
+
 /** The latest read of the canvas by an agent, as recorded by `screenforge-mcp`. */
 export interface AgentRead {
   /** Unix time in milliseconds. */
@@ -9,17 +11,7 @@ export interface AgentRead {
   with_instructions: number;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MINUTE = 60_000;
-
-const two = (n: number) => String(n).padStart(2, "0");
-const clock = (d: Date) => `${two(d.getHours())}:${two(d.getMinutes())}`;
-const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-
-/** Whole days from `at` to `now`, by calendar day (0 = same day, 1 = yesterday). */
-function daysAgo(at: Date, now: Date): number {
-  return Math.round((dayStart(now) - dayStart(at)) / 86_400_000);
-}
 
 /** "Claude Code", "Claude Desktop", the client's own name, or "An agent" when it gave none. */
 export function clientLabel(client?: string | null): string {
@@ -40,7 +32,7 @@ export function agoLabel(atMs: number, nowMs: number): string {
   const days = daysAgo(at, new Date(nowMs));
   if (days <= 0) return clock(at);
   if (days === 1) return "yesterday";
-  return `${at.getDate()} ${MONTHS[at.getMonth()]}`;
+  return dayMonth(at);
 }
 
 /** The Connect AI footer: who read, when, and how much. */
@@ -48,7 +40,7 @@ export function lastReadLine(read: AgentRead, nowMs: number): string {
   const at = new Date(read.at_ms);
   const days = daysAgo(at, new Date(nowMs));
   const when =
-    days <= 0 ? `at ${clock(at)}` : days === 1 ? `yesterday at ${clock(at)}` : `on ${at.getDate()} ${MONTHS[at.getMonth()]} at ${clock(at)}`;
+    days <= 0 ? `at ${clock(at)}` : days === 1 ? `yesterday at ${clock(at)}` : `on ${dayMonth(at)} at ${clock(at)}`;
   const elements = `${read.nodes} ${read.nodes === 1 ? "element" : "elements"}`;
   return `${clientLabel(read.client)} last read the canvas ${when} · ${elements}, ${read.with_instructions} with instructions`;
 }

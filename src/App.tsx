@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientResult } from "./agentCards";
 import AgentSetup, { type AgentClient, type AgentStatus } from "./AgentSetup";
 import CanvasView, { type CanvasControls } from "./canvas/CanvasView";
@@ -11,6 +11,8 @@ import {
   configureAgent,
   getLastProject,
   pickFolder,
+  type RecentProject,
+  recentProjects,
   setLastProject,
 } from "./services/backend";
 
@@ -27,12 +29,18 @@ export default function App() {
   const [agentResults, setAgentResults] = useState<Partial<Record<AgentClient, ClientResult>>>({});
   // The title bar shows the agent state without opening the dialog.
   const [agentState, setAgentState] = useState<AgentStatus | null>(null);
+  const [recent, setRecent] = useState<RecentProject[]>([]);
   const [saved, setSaved] = useState<Date | null>(null);
   const lastRead = useLastRead(project.status === "open" ? project.root : null);
   // The canvas loads behind the home screen's "Opening…" card and is revealed once it has.
   const [loaded, setLoaded] = useState(false);
   const [exportLabel, setExportLabel] = useState<string | null>(null);
   const canvasControls = useRef<CanvasControls | null>(null);
+
+  // A list that cannot be read is just an empty list: the home screen still opens folders.
+  const refreshRecent = useCallback(() => {
+    recentProjects().then(setRecent, () => setRecent([]));
+  }, []);
 
   const refreshAgents = async () => {
     const status = await agentStatus();
@@ -45,15 +53,21 @@ export default function App() {
       setProject(root ? { status: "open", root } : { status: "none" }),
     );
     refreshAgents().catch(() => {});
-  }, []);
+    refreshRecent();
+  }, [refreshRecent]);
 
-  async function openFolder() {
-    const root = await pickFolder();
-    if (!root) return;
+  async function openProject(root: string) {
     await setLastProject(root);
     setSaved(null);
     setLoaded(false);
     setProject({ status: "open", root });
+    // Opening recorded it: the list is now one project newer.
+    refreshRecent();
+  }
+
+  async function openFolder() {
+    const root = await pickFolder();
+    if (root) await openProject(root);
   }
 
   async function openAgents() {
@@ -91,7 +105,7 @@ export default function App() {
   if (project.status === "none") {
     return (
       <main className="h-screen w-screen">
-        <Home onOpen={openFolder} />
+        <Home onOpen={openFolder} recent={recent} onOpenRecent={openProject} />
       </main>
     );
   }
@@ -119,7 +133,7 @@ export default function App() {
       />
       {!loaded && (
         <div className="absolute inset-0 z-40">
-          <Home opening={folderName(project.root)} onOpen={openFolder} />
+          <Home opening={folderName(project.root)} onOpen={openFolder} recent={recent} onOpenRecent={openProject} />
         </div>
       )}
       {agents && (
