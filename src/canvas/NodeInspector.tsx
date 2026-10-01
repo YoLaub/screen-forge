@@ -30,6 +30,8 @@ interface Props {
   /** Other nodes on the canvas, as link targets. */
   others: { id: string; name: string; type: string }[];
   onChange: (patch: InspectorPatch) => void;
+  /** Fold the panel away. */
+  onCollapse: () => void;
 }
 
 const field = "h-6 min-w-0 rounded-md border border-line bg-panel2 px-[7px] font-mono text-[11px] text-tx outline-none focus:border-acc";
@@ -38,7 +40,7 @@ function Section({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col gap-2 border-t border-line px-3.5 py-3">{children}</div>;
 }
 
-export default function NodeInspector({ node, others, onChange }: Props) {
+export default function NodeInspector({ node, others, onChange, onCollapse }: Props) {
   const [styleOpen, setStyleOpen] = useState(true);
   const target = (id: string) => others.find((o) => o.id === id);
 
@@ -50,6 +52,17 @@ export default function NodeInspector({ node, others, onChange }: Props) {
             {node.typeLabel.toUpperCase()}
           </span>
           <span className="flex-1 font-mono text-[10.5px] text-tx3">{node.id.toUpperCase()}</span>
+          <button
+            title="Hide inspector (⇧⌘H hides both panels)"
+            aria-label="Hide inspector"
+            onClick={onCollapse}
+            className="grid size-[22px] place-items-center rounded-[5px] text-tx3 hover:bg-hover"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <rect x="2" y="3" width="12" height="10" rx="1.5" />
+              <path d="M10 3v10" />
+            </svg>
+          </button>
           <button
             title="Copy id"
             aria-label="Copy id"

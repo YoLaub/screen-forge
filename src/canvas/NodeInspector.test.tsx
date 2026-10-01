@@ -18,7 +18,7 @@ const others = [
 
 function setup(n: InspectorNode = node) {
   const onChange = vi.fn();
-  render(<NodeInspector node={n} others={others} onChange={onChange} />);
+  render(<NodeInspector node={n} others={others} onChange={onChange} onCollapse={() => {}} />);
   return onChange;
 }
 
@@ -101,6 +101,7 @@ describe("NodeInspector", () => {
         node={{ ...node, kind: "vector_drawing", typeLabel: "Rectangle", size: undefined, style: { fill: "#E5E7EB" }, styleApplies: { fill: true, radius: true, text: false } }}
         others={others}
         onChange={onChange}
+        onCollapse={() => {}}
       />,
     );
     fireEvent.change(screen.getByLabelText("Opacity"), { target: { value: "40" } });
@@ -119,5 +120,14 @@ describe("NodeInspector", () => {
   it("tells what a frame contains", () => {
     setup({ ...node, kind: "frame", typeLabel: "Frame", size: undefined, childCount: 4 });
     expect(screen.getByText("Contains 4 elements. Moving the frame moves its content.")).toBeInTheDocument();
+  });
+
+  it("folds away from a button in its header", () => {
+    const onCollapse = vi.fn();
+    render(<NodeInspector node={node} others={others} onChange={() => {}} onCollapse={onCollapse} />);
+    const hide = screen.getByRole("button", { name: "Hide inspector" });
+    expect(hide).toHaveAttribute("title", "Hide inspector (⇧⌘H hides both panels)");
+    fireEvent.click(hide);
+    expect(onCollapse).toHaveBeenCalled();
   });
 });

@@ -11,6 +11,8 @@ interface Props {
   onToggleLocked: (id: string) => void;
   onForward: () => void;
   onBackward: () => void;
+  /** Fold the panel away. */
+  onCollapse: () => void;
   /** Float over the canvas (narrow windows) instead of taking a column. */
   floating?: boolean;
 }
@@ -27,6 +29,7 @@ export default function LayersPanel({
   onToggleLocked,
   onForward,
   onBackward,
+  onCollapse,
   floating = false,
 }: Props) {
   const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
@@ -46,6 +49,12 @@ export default function LayersPanel({
     >
       <div className="flex h-[38px] flex-none items-center gap-1 pr-2 pl-3.5">
         <span className="flex-1 font-semibold">Layers</span>
+        <button aria-label="Hide layers" title="Hide layers (⇧⌘H hides both panels)" onClick={onCollapse} className={headerButton}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <rect x="2" y="3" width="12" height="10" rx="1.5" />
+            <path d="M6 3v10" />
+          </svg>
+        </button>
         <button aria-label="Bring forward" title="Bring forward (⌘])" disabled={!selectedId} onClick={onForward} className={headerButton}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M8 12.5V3.5M4.5 7L8 3.5 11.5 7" />
