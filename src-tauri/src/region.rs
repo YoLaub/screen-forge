@@ -173,7 +173,22 @@ pub async fn region_begin(app: AppHandle) -> Result<(), String> {
         .inspect_err(|_| show_pill(&app))?;
     let scale = f64::from(image.width()) / w;
     *app.state::<RegionSession>().0.lock().map_err(|e| e.to_string())? = Some(Session { image, scale });
-    open_overlay(&app, x, y, w, h).inspect_err(|_| show_pill(&app))
+    // AppKit windows must be built on the main thread; this command runs on a worker one.
+    on_main_thread(&app, move |app| open_overlay(app, x, y, w, h)).inspect_err(|_| show_pill(&app))
+}
+
+/// Runs `f` on the main thread and waits for its result.
+fn on_main_thread<T: Send + 'static>(
+    app: &AppHandle,
+    f: impl FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(f(&handle));
+    })
+    .map_err(|e| e.to_string())?;
+    rx.recv().map_err(|e| e.to_string())?
 }
 
 async fn tokio_sleep(ms: u64) {
