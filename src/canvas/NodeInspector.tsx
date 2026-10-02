@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { dayTimeLabel } from "../dates";
 import { type Link, addLink, removeLink, updateLink } from "./links";
 import type { NodeKind } from "./nodeRecord";
@@ -48,6 +48,16 @@ function Section({ children }: { children: React.ReactNode }) {
 export default function NodeInspector({ node, others, onChange, onCollapse }: Props) {
   const [styleOpen, setStyleOpen] = useState(true);
   const target = (id: string) => others.find((o) => o.id === id);
+  // The copy button turns into a check for a moment, so that a click is seen to work.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  const copyId = () => {
+    navigator.clipboard?.writeText(node.id).then(() => setCopied(true), () => {});
+  };
 
   return (
     <aside className="flex w-[300px] flex-none flex-col overflow-y-auto border-l border-line bg-panel text-xs text-tx">
@@ -69,15 +79,21 @@ export default function NodeInspector({ node, others, onChange, onCollapse }: Pr
             </svg>
           </button>
           <button
-            title="Copy id"
-            aria-label="Copy id"
-            onClick={() => navigator.clipboard?.writeText(node.id)}
-            className="grid size-[22px] place-items-center rounded-[5px] text-tx3 hover:bg-hover"
+            title={copied ? "Copied" : "Copy id"}
+            aria-label={copied ? "Copied" : "Copy id"}
+            onClick={copyId}
+            className={`grid size-[22px] place-items-center rounded-[5px] hover:bg-hover ${copied ? "text-ok" : "text-tx3"}`}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-              <rect x="5" y="5" width="8.5" height="8.5" rx="1.5" />
-              <path d="M3 10.5V3.8C3 3.3 3.3 3 3.8 3h6.7" />
-            </svg>
+            {copied ? (
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M3.5 8.5l3 3 6-7" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <rect x="5" y="5" width="8.5" height="8.5" rx="1.5" />
+                <path d="M3 10.5V3.8C3 3.3 3.3 3 3.8 3h6.7" />
+              </svg>
+            )}
           </button>
         </div>
         <input
