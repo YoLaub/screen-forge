@@ -2,6 +2,7 @@ mod agents;
 mod capture;
 mod export;
 mod pill;
+mod region;
 mod project;
 
 /// Front-end events for a capture made with the global shortcut.
@@ -47,6 +48,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(pill::PillTop::default())
+        .manage(region::RegionSession::default())
         .plugin(tauri_nspanel_init())
         .setup(|app| {
             use tauri::Emitter;
@@ -93,6 +95,10 @@ pub fn run() {
             project::get_last_project,
             project::set_last_project,
             project::recent_projects,
+            region::region_begin,
+            region::region_frame,
+            region::region_finish,
+            region::region_cancel,
             pill::pill_set_state,
             pill::pill_set_top,
             pill::show_main_window,

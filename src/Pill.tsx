@@ -17,6 +17,7 @@ import {
   onCaptureFailed,
   pillSetState,
   pillSetTop,
+  regionBegin,
   sendPillRequest,
   type ShortcutCapture,
   showMainWindow,
@@ -161,6 +162,15 @@ export default function Pill() {
     }
   }
 
+  async function startRegion() {
+    try {
+      await regionBegin();
+    } catch (error) {
+      setCard({ kind: "error", message: String(error) });
+      go("captured");
+    }
+  }
+
   async function askPaste() {
     await showMainWindow();
     await sendPillRequest({ kind: "paste" });
@@ -260,6 +270,12 @@ export default function Pill() {
             <svg {...ICON}>
               <rect x="1.5" y="3" width="9" height="7" rx="1.5" />
               <rect x="5.5" y="6" width="9" height="7" rx="1.5" />
+            </svg>
+          </Action>
+          <Action label="Capture a region" detail="Draw a rectangle or an outline on the screen" onClick={startRegion}>
+            <svg {...ICON}>
+              <path d="M2 5.5V3.5C2 2.7 2.7 2 3.5 2h2M10.5 2h2c.8 0 1.5.7 1.5 1.5v2M14 10.5v2c0 .8-.7 1.5-1.5 1.5h-2M5.5 14h-2C2.7 14 2 13.3 2 12.5v-2" strokeDasharray="2 2" />
+              <path d="M6 8h4M8 6v4" />
             </svg>
           </Action>
           <Action label="Paste image from clipboard" detail="Adds the copied image to the canvas" onClick={() => askPaste()}>
