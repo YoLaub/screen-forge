@@ -201,3 +201,12 @@
   right values while the pill still vanished on other desktops. Only a real NSPanel fixed it.
 - Packaged builds change the app identity: Screen Recording must be granted again after every
   `pnpm bundle`, and an old copy of the app may still be the one running.
+
+## region-capture (2026-10-02)
+- Two crashes in a row came from the same cause: AppKit windows touched from the wrong place.
+  First the overlay was built on a worker thread (`setFloatingPanel`), then destroyed as a
+  panel (`removeFromSuperview`). The macOS crash reports in `~/Library/Logs/DiagnosticReports/`
+  named both in one read. Read them first.
+- A temporary self-test (open and close the overlay twice at startup, no click, no permission
+  needed) showed the fix holds, and the same test crashed the old code: a fix is only proven
+  when the test fails without it.
