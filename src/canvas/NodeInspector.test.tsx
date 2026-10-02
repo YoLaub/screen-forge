@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { dayTimeLabel } from "../dates";
 import NodeInspector, { type InspectorNode } from "./NodeInspector";
@@ -22,6 +22,26 @@ function setup(n: InspectorNode = node) {
   render(<NodeInspector node={n} others={others} onChange={onChange} onCollapse={() => {}} />);
   return onChange;
 }
+
+describe("NodeInspector copy id", () => {
+  it("says it copied, then goes back to its icon", async () => {
+    vi.useFakeTimers();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy id" })));
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(2000));
+    expect(screen.getByRole("button", { name: "Copy id" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("does not claim a copy that failed", async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy id" })));
+    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
+  });
+});
 
 describe("NodeInspector", () => {
   it("heads with the element type and id, and copies the id", async () => {

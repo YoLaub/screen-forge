@@ -109,7 +109,7 @@ pub fn create(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .url(WebviewUrl::App("index.html?window=pill".into()))
         .title("ScreenForge pill")
         .size(LogicalSize::new(w, h).into())
-        .with_window(|window| window.decorations(false).resizable(false).shadow(false))
+        .with_window(|window| window.decorations(false).resizable(false).shadow(false).transparent(true))
         .add_style_mask(StyleMask::empty().nonactivating_panel())
         .level(PanelLevel::Status)
         .collection_behavior(
