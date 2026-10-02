@@ -210,3 +210,7 @@
 - A temporary self-test (open and close the overlay twice at startup, no click, no permission
   needed) showed the fix holds, and the same test crashed the old code: a fix is only proven
   when the test fails without it.
+
+## v0.3.0 (2026-10-02)
+- Region capture from the pill (rectangle or outline) on top of 0.2.0. A tag already pushed is
+  not moved: a new version is cheaper than explaining a moved tag.
