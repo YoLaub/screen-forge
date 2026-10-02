@@ -5,6 +5,7 @@ import type { AgentRead } from "../agentRead";
 import type { AgentClient, AgentStatus } from "../AgentSetup";
 import type { ExportFormat, ExportSettings } from "../canvas/exportOptions";
 import type { NodeRecord } from "../canvas/nodeRecord";
+import type { RegionShape } from "../regionShape";
 import type { WindowInfo } from "../canvas/WindowPicker";
 
 /** A node as sent to the `save_canvas` command. */
@@ -181,4 +182,23 @@ export function onCaptureFailed(handler: (message: string) => void): Promise<Unl
 /** A capture made while the pill is on screen, for its card. */
 export function onCaptured(handler: (capture: ShortcutCapture) => void): Promise<UnlistenFn> {
   return listen<ShortcutCapture>("shortcut-capture", (e) => handler(e.payload));
+}
+
+/** Region capture: freezes the screen under the cursor and opens the drawing overlay. */
+export function regionBegin(): Promise<void> {
+  return invoke("region_begin");
+}
+
+/** The frozen screen shot the overlay draws on, as base64 JPEG. */
+export function regionFrame(): Promise<string> {
+  return invoke("region_frame");
+}
+
+/** Cuts the drawn area out; the result arrives as a `shortcut-capture` event. */
+export function regionFinish(shape: RegionShape): Promise<void> {
+  return invoke("region_finish", { shape });
+}
+
+export function regionCancel(): Promise<void> {
+  return invoke("region_cancel");
 }
