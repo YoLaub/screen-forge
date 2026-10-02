@@ -148,11 +148,24 @@ fn show_pill(app: &AppHandle) {
     }
 }
 
+/// Closes the overlay. A panel is turned back into a plain window first (the way the panel
+/// crate documents it): destroying it as it is makes AppKit abort the app.
 fn close_overlay(app: &AppHandle) {
-    if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = overlay.destroy();
-    }
-    show_pill(app);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        #[cfg(target_os = "macos")]
+        {
+            use tauri_nspanel::ManagerExt;
+            if let Some(window) = handle.get_webview_panel(OVERLAY_LABEL).ok().and_then(|p| p.to_window()) {
+                let _ = window.destroy();
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        if let Some(overlay) = handle.get_webview_window(OVERLAY_LABEL) {
+            let _ = overlay.destroy();
+        }
+        show_pill(&handle);
+    });
 }
 
 /// Freezes the screen under the cursor and covers it with the drawing overlay.
