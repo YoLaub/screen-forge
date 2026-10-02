@@ -17,6 +17,7 @@ vi.mock("./services/backend", () => ({
   onCaptureFailed: vi.fn(),
   pillSetState: vi.fn(),
   pillSetTop: vi.fn(),
+  regionBegin: vi.fn(),
   sendPillRequest: vi.fn(),
   showMainWindow: vi.fn(),
 }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   mocked.pillSetState.mockResolvedValue();
   mocked.captureFront.mockResolvedValue();
   mocked.captureChosen.mockResolvedValue();
+  mocked.regionBegin.mockResolvedValue();
   mocked.ensureScreenCaptureAccess.mockResolvedValue(true);
   mocked.listWindows.mockResolvedValue([
     { id: 7, app_name: "Safari", title: "Login", width: 1280, height: 864 },
@@ -143,6 +145,21 @@ describe("Pill", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Paste image from clipboard" })));
     expect(mocked.showMainWindow).toHaveBeenCalled();
     expect(mocked.sendPillRequest).toHaveBeenLastCalledWith({ kind: "paste" });
+  });
+
+  it("starts a region capture without opening the app", async () => {
+    await open();
+    expect(screen.getByText("Draw a rectangle or an outline on the screen")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Capture a region" })));
+    expect(mocked.regionBegin).toHaveBeenCalledTimes(1);
+    expect(mocked.showMainWindow).not.toHaveBeenCalled();
+  });
+
+  it("says why a region capture could not start", async () => {
+    mocked.regionBegin.mockRejectedValue("Screen Recording permission needed.");
+    await open();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Capture a region" })));
+    expect(screen.getByRole("alert")).toHaveTextContent("Screen Recording permission needed.");
   });
 
   it("opens the canvas", async () => {
